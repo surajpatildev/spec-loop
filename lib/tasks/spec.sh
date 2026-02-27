@@ -11,7 +11,7 @@ count_active_tasks() {
   shopt -u nullglob
   [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
 
-  awk '/^> Status: pending$|^> Status: in-progress$|^> Status: in-review$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
+  awk '/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*pending[[:space:]]*$/ || /^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*in-progress[[:space:]]*$/ || /^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*in-review[[:space:]]*$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
 count_pending_tasks() {
@@ -24,7 +24,7 @@ count_pending_tasks() {
   shopt -u nullglob
   [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
 
-  awk '/^> Status: pending$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
+  awk '/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*pending[[:space:]]*$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
 count_remaining_tasks() {
@@ -37,7 +37,7 @@ count_remaining_tasks() {
   shopt -u nullglob
   [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
 
-  awk '/^> Status:/ { if ($0 !~ /^> Status: done$/) count += 1 } END { print count + 0 }' "${task_files[@]}"
+  awk '/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*/ { if ($0 !~ /^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*done[[:space:]]*$/) count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
 count_done_tasks() {
@@ -50,7 +50,7 @@ count_done_tasks() {
   shopt -u nullglob
   [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
 
-  awk '/^> Status: done$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
+  awk '/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*done[[:space:]]*$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
 count_total_tasks() {
@@ -89,7 +89,32 @@ resolve_spec_dir() {
   done
 
   if [[ ${#active_specs[@]} -eq 0 ]]; then
-    die "No active specs found (no pending/in-progress/in-review tasks)"
+    if [[ ${#all_specs[@]} -eq 1 ]]; then
+      step_warn "No active tasks detected. Using the only available spec: ${all_specs[0]}"
+      echo "${all_specs[0]}"
+      return
+    fi
+
+    if [[ -t 0 && -t 1 ]]; then
+      step_warn "No active specs found. Select a spec to run explicitly:"
+      local i=1
+      local _spec_choice
+      for spec in "${all_specs[@]}"; do
+        local done_count total_count
+        done_count=$(count_done_tasks "$spec")
+        total_count=$(count_total_tasks "$spec")
+        step_info "  [${i}] $(basename "$spec")  (${done_count}/${total_count} done)"
+        i=$((i + 1))
+      done
+      echo ""
+      read -r -p "  Enter spec number (or press Enter to cancel): " _spec_choice
+      if [[ "$_spec_choice" =~ ^[0-9]+$ ]] && [[ "$_spec_choice" -ge 1 ]] && [[ "$_spec_choice" -le ${#all_specs[@]} ]]; then
+        echo "${all_specs[$((_spec_choice - 1))]}"
+        return
+      fi
+    fi
+
+    die "No active specs found (no pending/in-progress/in-review tasks). Pass --spec <path>."
   fi
 
   if [[ ${#active_specs[@]} -gt 1 ]]; then

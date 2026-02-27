@@ -4,7 +4,15 @@
 # Get the status string from a task file
 get_task_status() {
   local task_file="$1"
-  awk -F': ' '/^> Status:/ { gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit }' "$task_file"
+  awk '
+    /^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*/ {
+      line=$0
+      sub(/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*/, "", line)
+      gsub(/^[ \t]+|[ \t]+$/, "", line)
+      print tolower(line)
+      exit
+    }
+  ' "$task_file"
 }
 
 # Get the task name from the first heading
@@ -59,5 +67,8 @@ set_task_status() {
   local new_status="$2"
 
   [[ -f "$task_file" ]] || return 1
-  sed -i.bak "s/^> Status: .*/> Status: ${new_status}/" "$task_file" && rm -f "${task_file}.bak"
+  sed -E -i.bak \
+    -e "s/^[[:space:]]*>[[:space:]]*Status:[[:space:]]*.*/> Status: ${new_status}/" \
+    -e "s/^[[:space:]]*Status:[[:space:]]*.*/Status: ${new_status}/" \
+    "$task_file" && rm -f "${task_file}.bak"
 }
