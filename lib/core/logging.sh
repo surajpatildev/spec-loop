@@ -115,11 +115,19 @@ progress_bar() {
 
 # ── Phase output ────────────────────────────────────
 
-# Phase start: ● build
+# Phase start: ● build [0s]
 phase() {
   local label="$1"
+  # Stop any existing phase timer before printing
+  if declare -F _phase_timer_stop >/dev/null 2>&1; then
+    _phase_timer_stop
+  fi
   echo ""
   echo -e "  ${C_BLUE}${SYM_PHASE}${C_RESET} ${C_BOLD}${label}${C_RESET}"
+  # Start elapsed timer for this phase
+  if declare -F _phase_timer_start >/dev/null 2>&1; then
+    _phase_timer_start "$label"
+  fi
 }
 
 # Info line: → tool Bash: npm run lint

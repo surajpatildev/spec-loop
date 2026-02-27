@@ -5,6 +5,51 @@
 _STREAM_TOOL_COUNT=0
 _STREAM_START_EPOCH=0
 
+# Track the last Bash tool_use_id for grouping results
+_STREAM_LAST_BASH_ID=""
+_STREAM_LAST_BASH_CMD=""
+
+# Phase elapsed timer
+_PHASE_TIMER_PID=""
+_PHASE_TIMER_PREV_TRAP=""
+
+_phase_timer_start() {
+  local label="$1"
+  [[ "$TERM_IS_INTERACTIVE" == "true" ]] || return
+
+  _phase_timer_stop
+
+  local start_epoch
+  start_epoch=$(date +%s)
+
+  (
+    while true; do
+      local now elapsed
+      now=$(date +%s)
+      elapsed=$((now - start_epoch))
+      printf '\r      %b%s%b %b%s%b %b[%ss]%b  ' \
+        "$C_BLUE" "$SYM_PHASE" "$C_RESET" \
+        "$C_BOLD" "$label" "$C_RESET" \
+        "$C_DIM" "$elapsed" "$C_RESET"
+      sleep 1
+    done
+  ) &
+  _PHASE_TIMER_PID=$!
+
+  # Chain onto existing EXIT trap
+  _PHASE_TIMER_PREV_TRAP=$(trap -p EXIT | sed "s/^trap -- '\\(.*\\)' EXIT$/\\1/" || true)
+  trap '_phase_timer_stop; eval "$_PHASE_TIMER_PREV_TRAP"' EXIT
+}
+
+_phase_timer_stop() {
+  if [[ -n "$_PHASE_TIMER_PID" ]]; then
+    kill "$_PHASE_TIMER_PID" 2>/dev/null
+    wait "$_PHASE_TIMER_PID" 2>/dev/null || true
+    _PHASE_TIMER_PID=""
+    term_clear_line
+  fi
+}
+
 process_stream_event() {
   local line="$1"
 
@@ -38,6 +83,7 @@ process_stream_event() {
       _handle_rate_limit_event "$line"
       ;;
     result)
+      _phase_timer_stop
       _handle_result_event "$line"
       ;;
   esac
@@ -55,6 +101,8 @@ _handle_system_event() {
     step_info "session  ${C_DIM}model=${model}  id=${session:0:8}${C_RESET}"
     _STREAM_TOOL_COUNT=0
     _STREAM_START_EPOCH=$(date +%s)
+    _STREAM_LAST_BASH_ID=""
+    _STREAM_LAST_BASH_CMD=""
   fi
 }
 
@@ -94,8 +142,9 @@ _handle_assistant_event() {
 
   case "$content_type" in
     tool_use)
-      local tool_name tool_cmd
+      local tool_name tool_cmd tool_id
       tool_name=$(jq -r '.message.content[0].name // "tool"' <<<"$line")
+      tool_id=$(jq -r '.message.content[0].id // ""' <<<"$line")
 
       # Skip internal tools unless verbose
       if _is_internal_tool "$tool_name" && [[ "$VERBOSE" != "true" ]]; then
@@ -111,6 +160,15 @@ _handle_assistant_event() {
       fi
 
       _STREAM_TOOL_COUNT=$((_STREAM_TOOL_COUNT + 1))
+
+      # Track Bash tool calls for result grouping
+      if [[ "$tool_name" == "Bash" ]]; then
+        _STREAM_LAST_BASH_ID="$tool_id"
+        _STREAM_LAST_BASH_CMD="$tool_cmd"
+      else
+        _STREAM_LAST_BASH_ID=""
+        _STREAM_LAST_BASH_CMD=""
+      fi
 
       # Format: → Read     AGENTS.md
       local padded_name
@@ -142,14 +200,28 @@ _handle_user_event() {
   content_type=$(jq -r 'if (.message.content | type) == "array" then (.message.content[0].type // "") else "" end' <<<"$line")
 
   if [[ "$content_type" == "tool_result" ]]; then
-    local is_error
+    local is_error tool_use_id
     is_error=$(jq -r 'if (.message.content | type) == "array" then (.message.content[0].is_error // false) else false end' <<<"$line")
+    tool_use_id=$(jq -r 'if (.message.content | type) == "array" then (.message.content[0].tool_use_id // "") else "" end' <<<"$line")
 
     if [[ "$is_error" == "true" ]]; then
       local err_content
       err_content=$(jq -r 'if (.message.content | type) == "array" then (.message.content[0].content // "") else "" end' <<<"$line")
       err_content=$(trim_single_line "$err_content" 80)
       step_warn "error: ${err_content}"
+      _STREAM_LAST_BASH_ID=""
+    elif [[ -n "$_STREAM_LAST_BASH_ID" && "$tool_use_id" == "$_STREAM_LAST_BASH_ID" ]]; then
+      # This is the result of the last Bash command — show pass/fail
+      local result_content
+      result_content=$(jq -r 'if (.message.content | type) == "array" then (.message.content[0].content // "") else "" end' <<<"$line")
+      local result_summary
+      result_summary=$(trim_single_line "$result_content" 80)
+      if [[ -n "$result_summary" ]]; then
+        step_ok "${C_DIM}${result_summary}${C_RESET}"
+      else
+        step_ok "${C_DIM}done${C_RESET}"
+      fi
+      _STREAM_LAST_BASH_ID=""
     elif [[ "$VERBOSE" == "true" ]]; then
       local stdout
       stdout=$(jq -r 'if (.tool_use_result | type) == "object" then (.tool_use_result.stdout // "") else "" end' <<<"$line")

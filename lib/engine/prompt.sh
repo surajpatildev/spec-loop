@@ -65,6 +65,9 @@ ${test_section}
 6. **Log Progress** — If progress.md exists in the spec directory, append a log entry with timestamp and summary of what was done.
 
 7. **Commit** — Stage ONLY source code changes and commit with a descriptive message. The commit message should reference the task number and name.
+   - Use \`git add <specific files>\` — do NOT use \`git add .\` or \`git add -A\`
+   - NEVER stage spec/task files (\`.agents/specs/\`) or progress.md — these are local development state
+   - Only commit source code, tests, config files, and package files
 
 ## Constraints
 
@@ -72,10 +75,11 @@ ${test_section}
 - Do not skip acceptance criteria — every one must be verifiable.
 - Include real evidence in Done/Notes, not just claims.
 - Always commit your work when the task is complete and verified.
+- NEVER commit files under \`.agents/specs/\` — they are gitignored and local-only.
 
-## Machine-Readable Output
+## CRITICAL: Machine-Readable Output
 
-End your response with exactly one of these lines:
+Your response MUST end with exactly one of these status lines as the very last line of your response. This is required for the automation loop to continue. If you omit this line, the loop will fail.
 
 \`\`\`
 BUILD_STATUS: COMPLETED_TASK
@@ -83,15 +87,17 @@ BUILD_STATUS: BLOCKED
 BUILD_STATUS: NO_PENDING_TASKS
 \`\`\`
 
-If ALL spec tasks are now done, also include:
+If ALL spec tasks are now done, also include on its own line before the BUILD_STATUS:
 \`\`\`
 <promise>COMPLETE</promise>
 \`\`\`
 
-If you are blocked by missing credentials/services/human decisions:
+If you are blocked by missing credentials/services/human decisions, include on its own line before the BUILD_STATUS:
 \`\`\`
 <promise>BLOCKED</promise>
 \`\`\`
+
+IMPORTANT: The very last line of your response must always be one of the BUILD_STATUS lines above. No text after it.
 PROMPT
 }
 
@@ -189,23 +195,25 @@ Summarize findings in three categories:
 - **Should fix**: Style inconsistencies, missing logs, naming issues
 - **Suggestions**: Optional improvements, performance, readability
 
-## Machine-Readable Output
+## CRITICAL: Machine-Readable Output
 
-End your response with these exact lines:
+Your response MUST end with these exact lines as the very last 4 lines. Replace \`PASS | FAIL\` with either PASS or FAIL, and \`<number>\` with actual numbers. This is required for the automation loop to continue.
 
 \`\`\`
-REVIEW_STATUS: PASS | FAIL
-MUST_FIX_COUNT: <number>
-SHOULD_FIX_COUNT: <number>
-SUGGESTION_COUNT: <number>
+REVIEW_STATUS: PASS
+MUST_FIX_COUNT: 0
+SHOULD_FIX_COUNT: 0
+SUGGESTION_COUNT: 0
 \`\`\`
 
 PASS only if MUST_FIX_COUNT is 0 AND SHOULD_FIX_COUNT is 0.
 
-If review is blocked by missing context:
+If review is blocked by missing context, include before the status lines:
 \`\`\`
 <promise>BLOCKED</promise>
 \`\`\`
+
+IMPORTANT: The very last lines of your response must always be the REVIEW_STATUS block above. No text after it.
 PROMPT
 }
 
@@ -253,25 +261,29 @@ ${verify_section}
 ${test_section}
 4. Update task documentation if the fixes affect acceptance criteria or notes
 5. Commit the fixes with a descriptive message using \`git add <specific files>\`
+   - NEVER stage spec/task files (\`.agents/specs/\`) — they are local-only
 
 ## Constraints
 
 - Only fix issues identified in the review — don't refactor unrelated code
 - If a review finding is incorrect or not applicable, explain why in your response
 - Ensure all verify/test commands pass after fixes
+- NEVER commit files under \`.agents/specs/\` — they are gitignored and local-only
 
-## Machine-Readable Output
+## CRITICAL: Machine-Readable Output
 
-End your response with exactly one of these lines:
+Your response MUST end with exactly one of these status lines as the very last line. This is required for the automation loop to continue.
 
 \`\`\`
 BUILD_STATUS: FIXES_APPLIED
 BUILD_STATUS: BLOCKED
 \`\`\`
 
-If you are blocked:
+If you are blocked, include before the BUILD_STATUS:
 \`\`\`
 <promise>BLOCKED</promise>
 \`\`\`
+
+IMPORTANT: The very last line of your response must always be one of the BUILD_STATUS lines above. No text after it.
 PROMPT
 }

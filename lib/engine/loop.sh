@@ -8,6 +8,9 @@
 #     01.md          — iteration 1 (build output, review output, fix output)
 #     02.md          — iteration 2
 #     ...
+#
+# Resume is phase-aware: if the loop crashes after build but before review,
+# --resume will skip straight to review instead of re-running build.
 
 cmd_run() {
   # Preflight
@@ -24,14 +27,16 @@ cmd_run() {
   session_init
 
   # Session setup — handle resume vs fresh
-  local session_path loop_index
+  local session_path loop_index resume_phase="" resume_before_sha=""
 
   if [[ "$RESUME" == "true" ]] && session_load_state; then
     spec_dir="$RESUME_SPEC_DIR"
     spec_name="$(get_spec_name "$spec_dir")"
     session_path="$RESUME_SESSION_PATH"
     loop_index="$RESUME_LOOP_INDEX"
-    step_info "Resuming session for ${spec_name} at iteration ${loop_index}"
+    resume_phase="$RESUME_PHASE"
+    resume_before_sha="$RESUME_BEFORE_SHA"
+    step_info "Resuming session for ${spec_name} at iteration ${loop_index} (phase: ${resume_phase})"
     mkdir -p "$session_path"
   else
     local session_ts
@@ -73,9 +78,6 @@ cmd_run() {
       return "$EXIT_CIRCUIT_OPEN"
     fi
 
-    # Save resume state
-    session_save_state "$spec_dir" "$loop_index" "$session_path"
-
     pending_tasks="$(count_pending_tasks "$spec_dir")"
     done_tasks="$(count_done_tasks "$spec_dir")"
 
@@ -85,112 +87,136 @@ cmd_run() {
       return "$EXIT_OK"
     fi
 
-    separator "Iteration ${loop_index} of ${MAX_LOOPS}"
+    # Find the next task name for the iteration header
+    local next_task_file next_task_name
+    next_task_file="$(find_next_task "$spec_dir")"
+    next_task_name=""
+    if [[ -n "$next_task_file" ]]; then
+      next_task_name="$(get_task_name "$next_task_file")"
+    fi
+
+    if [[ -n "$next_task_name" ]]; then
+      separator "Iteration ${loop_index} ${SYM_DIAMOND} ${next_task_name}"
+    else
+      separator "Iteration ${loop_index} of ${MAX_LOOPS}"
+    fi
 
     # Iteration file — single .md per iteration
     local iter_file="${session_path}/$(printf '%02d' "$loop_index").md"
-    local iter_num
-    iter_num=$(printf '%02d' "$loop_index")
 
-    # Temp file for raw NDJSON (deleted after extraction)
-    local ndjson_tmp
-    ndjson_tmp=$(mktemp)
+    # Variables that persist across phases within an iteration
+    local before_sha="" after_build_sha=""
+    local build_cost=0 build_status=""
 
-    # Prompt temp file (not saved)
-    local prompt_tmp
-    prompt_tmp=$(mktemp)
+    # ── PHASE: BUILD ────────────────────────────────
+    # Skip build if resuming into a later phase
+    if [[ "$resume_phase" == "review" || "$resume_phase" == "fix" ]]; then
+      step_info "Skipping build (already completed, resuming at ${resume_phase})"
+      before_sha="$resume_before_sha"
+      after_build_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+      build_status="COMPLETED_TASK"
+      # Save state at current phase
+      session_save_state "$spec_dir" "$loop_index" "$session_path" "$resume_phase" "$before_sha"
+    else
+      # Save state: we're starting build
+      session_save_state "$spec_dir" "$loop_index" "$session_path" "build" ""
 
-    # ── CAPTURE GIT STATE BEFORE BUILD ──────────────
-    local before_sha
-    before_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+      before_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
 
-    # ── BUILD ──────────────────────────────────────
-    phase "build"
-    write_build_prompt "$spec_dir" "$prompt_tmp"
+      phase "build"
+      local ndjson_tmp prompt_tmp
+      ndjson_tmp=$(mktemp)
+      prompt_tmp=$(mktemp)
+      write_build_prompt "$spec_dir" "$prompt_tmp"
 
-    if ! run_claude "$prompt_tmp" "$ndjson_tmp"; then
-      rm -f "$prompt_tmp" "$ndjson_tmp" 2>/dev/null
-      die "Build run failed"
-    fi
+      if ! run_claude "$prompt_tmp" "$ndjson_tmp"; then
+        rm -f "$prompt_tmp" "$ndjson_tmp" 2>/dev/null
+        die "Build run failed"
+      fi
 
-    # Extract data from NDJSON
-    local build_cost build_duration build_text build_status
-    build_cost="$(extract_cost "$ndjson_tmp")"
-    build_duration="$(extract_duration_ms "$ndjson_tmp")"
-    build_text="$(extract_parseable_text "$ndjson_tmp")"
-    build_status="$(parse_kv_value "BUILD_STATUS" "$ndjson_tmp")"
-    total_cost=$(echo "$total_cost + $build_cost" | bc 2>/dev/null || echo "$total_cost")
+      # Extract data from NDJSON
+      local build_duration build_text
+      build_cost="$(extract_cost "$ndjson_tmp")"
+      build_duration="$(extract_duration_ms "$ndjson_tmp")"
+      build_text="$(extract_parseable_text "$ndjson_tmp")"
+      build_status="$(parse_kv_value "BUILD_STATUS" "$ndjson_tmp")"
+      total_cost=$(echo "$total_cost + $build_cost" | bc 2>/dev/null || echo "$total_cost")
 
-    local build_has_complete="false"
-    output_has_tag "$ndjson_tmp" "COMPLETE" && build_has_complete="true"
-    local build_has_blocked="false"
-    output_has_tag "$ndjson_tmp" "BLOCKED" && build_has_blocked="true"
+      local build_has_complete="false"
+      output_has_tag "$ndjson_tmp" "COMPLETE" && build_has_complete="true"
+      local build_has_blocked="false"
+      output_has_tag "$ndjson_tmp" "BLOCKED" && build_has_blocked="true"
 
-    # Done with NDJSON — clean up temps
-    rm -f "$ndjson_tmp" "$prompt_tmp" 2>/dev/null
+      rm -f "$ndjson_tmp" "$prompt_tmp" 2>/dev/null
 
-    # Write iteration file — build section
-    local build_cost_str
-    build_cost_str=$(format_cost "$build_cost")
-    local build_dur_s=$(( build_duration / 1000 ))
-    local build_dur_str
-    build_dur_str=$(format_duration "$build_dur_s")
+      # Write iteration file — build section
+      local build_cost_str
+      build_cost_str=$(format_cost "$build_cost")
+      local build_dur_s=$(( build_duration / 1000 ))
+      local build_dur_str
+      build_dur_str=$(format_duration "$build_dur_s")
 
-    {
-      echo "# Iteration ${loop_index}"
-      echo ""
-      echo "## Build"
-      echo "- Status: ${build_status:-unknown}"
-      echo "- Duration: ${build_dur_str}"
-      echo "- Cost: ${build_cost_str}"
-      echo ""
-      echo "### Output"
-      echo ""
-      echo "$build_text"
-    } > "$iter_file"
+      {
+        echo "# Iteration ${loop_index}"
+        echo ""
+        echo "## Build"
+        echo "- Status: ${build_status:-unknown}"
+        echo "- Duration: ${build_dur_str}"
+        echo "- Cost: ${build_cost_str}"
+        echo ""
+        echo "### Output"
+        echo ""
+        echo "$build_text"
+      } > "$iter_file"
 
-    # Capture commit SHA after build
-    local after_build_sha
-    after_build_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
+      after_build_sha=$(git rev-parse HEAD 2>/dev/null || echo "")
 
-    # Check promise tags
-    if [[ "$build_has_complete" == "true" ]]; then
-      step_ok "All tasks complete"
-      iterations_completed=$((iterations_completed + 1))
-      _session_log "$session_path" "$loop_index" "complete" "$build_cost" "$after_build_sha"
-      _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$iterations_completed"
-      return "$EXIT_OK"
-    fi
-
-    if [[ "$build_has_blocked" == "true" ]]; then
-      step_error "Build is BLOCKED"
-      _session_log "$session_path" "$loop_index" "blocked" "$build_cost" "$after_build_sha"
-      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
-      return "$EXIT_BLOCKED"
-    fi
-
-    [[ -n "$build_status" ]] || die "Build output missing BUILD_STATUS"
-
-    case "$build_status" in
-      NO_PENDING_TASKS)
-        step_ok "No pending tasks"
+      # Check promise tags
+      if [[ "$build_has_complete" == "true" ]]; then
+        step_ok "All tasks complete"
         iterations_completed=$((iterations_completed + 1))
-        _session_log "$session_path" "$loop_index" "no-pending" "$build_cost" "$after_build_sha"
+        _session_log "$session_path" "$loop_index" "complete" "$build_cost" "$after_build_sha"
         _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$iterations_completed"
         return "$EXIT_OK"
-        ;;
-      BLOCKED)
-        step_error "Build reported BLOCKED"
+      fi
+
+      if [[ "$build_has_blocked" == "true" ]]; then
+        step_error "Build is BLOCKED"
         _session_log "$session_path" "$loop_index" "blocked" "$build_cost" "$after_build_sha"
         _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
         return "$EXIT_BLOCKED"
-        ;;
-      COMPLETED_TASK)
-        ;; # Continue to review
-      *)
-        die "Unexpected BUILD_STATUS: '$build_status'"
-        ;;
-    esac
+      fi
+
+      [[ -n "$build_status" ]] || die "Build output missing BUILD_STATUS"
+
+      case "$build_status" in
+        NO_PENDING_TASKS)
+          step_ok "No pending tasks"
+          iterations_completed=$((iterations_completed + 1))
+          _session_log "$session_path" "$loop_index" "no-pending" "$build_cost" "$after_build_sha"
+          _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$iterations_completed"
+          return "$EXIT_OK"
+          ;;
+        BLOCKED)
+          step_error "Build reported BLOCKED"
+          _session_log "$session_path" "$loop_index" "blocked" "$build_cost" "$after_build_sha"
+          _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+          return "$EXIT_BLOCKED"
+          ;;
+        COMPLETED_TASK)
+          ;; # Continue to review
+        *)
+          die "Unexpected BUILD_STATUS: '$build_status'"
+          ;;
+      esac
+
+      # Build succeeded — save state so resume skips to review
+      session_save_state "$spec_dir" "$loop_index" "$session_path" "review" "$before_sha"
+    fi
+
+    # Clear resume_phase so subsequent iterations start fresh
+    resume_phase=""
+    resume_before_sha=""
 
     # ── DETECT PROGRESS (for circuit breaker) ──────
     local made_progress="false"
@@ -212,8 +238,9 @@ cmd_run() {
       continue
     fi
 
-    # ── REVIEW ─────────────────────────────────────
+    # ── PHASE: REVIEW ──────────────────────────────
     phase "review"
+    local ndjson_tmp prompt_tmp
     ndjson_tmp=$(mktemp)
     prompt_tmp=$(mktemp)
     write_review_prompt "$spec_dir" "$prompt_tmp" "$before_sha"
@@ -287,7 +314,10 @@ cmd_run() {
 
     step_warn "FAIL  ${must_fix_count} must-fix ${SYM_DIAMOND} ${should_fix_count} should-fix"
 
-    # ── FIX LOOP ───────────────────────────────────
+    # Save state: entering fix phase
+    session_save_state "$spec_dir" "$loop_index" "$session_path" "fix" "$before_sha"
+
+    # ── PHASE: FIX LOOP ───────────────────────────
     local fix_try=1
     local fix_passed="false"
     while [[ "$fix_try" -le "$MAX_REVIEW_FIX_LOOPS" ]]; do
@@ -420,6 +450,7 @@ cmd_run() {
   done
 
   # Reached max loops
+  printf '\a'
   if [[ "$ONCE" == "true" ]]; then
     pending_tasks="$(count_pending_tasks "$spec_dir")"
     step_ok "${C_BOLD}Single cycle completed${C_RESET} ${C_DIM}(--once). ${pending_tasks} tasks may remain.${C_RESET}"
@@ -460,6 +491,9 @@ _loop_complete() {
   box_line "  Cost        ${cost_str}"
   box_empty
   box_footer
+
+  # Terminal bell — notify if user tabbed away
+  printf '\a'
 
   _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "COMPLETE" "$iterations"
 }
