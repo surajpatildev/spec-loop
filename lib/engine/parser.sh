@@ -2,23 +2,29 @@
 # spec-loop output parser — extract status, tags, and metrics from Claude output
 
 # Extract text content from stream-json output
-# Falls back to raw file if jq fails
+# Prefers the "result" event (.result field) which has the complete response.
+# Falls back to assistant text events if no result event exists.
 extract_parseable_text() {
   local file="$1"
 
   [[ -s "$file" ]] || return
 
   if command -v jq >/dev/null 2>&1; then
-    local parsed
-    parsed=$(jq -r '
-      if .type == "result" then (.result // "")
-      elif .type == "assistant" then (.message.content[]? | select(.type == "text") | .text // "")
-      else ""
-      end
-    ' "$file" 2>/dev/null || true)
+    # First try: extract from the result event (authoritative, non-duplicated)
+    local result_text
+    result_text=$(jq -r 'select(.type == "result") | .result // empty' "$file" 2>/dev/null | head -1)
 
-    if [[ -n "$parsed" ]]; then
-      printf '%s\n' "$parsed"
+    if [[ -n "$result_text" ]]; then
+      printf '%s\n' "$result_text"
+      return
+    fi
+
+    # Second try: concatenate assistant text events (streaming fallback)
+    local assistant_text
+    assistant_text=$(jq -r 'select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text // empty' "$file" 2>/dev/null || true)
+
+    if [[ -n "$assistant_text" ]]; then
+      printf '%s\n' "$assistant_text"
       return
     fi
   fi

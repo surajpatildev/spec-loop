@@ -150,25 +150,17 @@ your-project/
 
 ## Session Logs
 
-Each run creates structured logs:
+Each run creates minimal, readable logs:
 
 ```
 .spec-loop/sessions/20260227_143022/
-├── session.json              # Machine-readable (cost, duration, exit reason)
-├── session.md                # Human-readable summary
-├── 01/                       # Iteration 1
-│   ├── build_prompt.md
-│   ├── build_output.log
-│   ├── review_prompt.md
-│   └── review_output.log
-└── 02/                       # Iteration 2
-    ├── build_prompt.md
-    ├── build_output.log
-    ├── review_prompt.md
-    ├── review_output.log
-    ├── fix_prompt_1.md       # Fix attempt
-    └── fix_output_1.log
+├── session.json     # Machine-readable analytics (cost, duration, exit reason)
+├── session.md       # Human-readable summary (one entry per iteration)
+├── 01.md            # Iteration 1 — build output, review output
+└── 02.md            # Iteration 2 — build, review, fix, recheck (if needed)
 ```
+
+Each iteration `.md` contains the full Claude response text organized by phase (Build, Review, Fix). No raw NDJSON logs or separate prompt files — just clean, readable output.
 
 ## Safety
 

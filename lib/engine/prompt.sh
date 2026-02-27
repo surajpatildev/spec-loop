@@ -64,7 +64,7 @@ ${test_section}
 
 6. **Log Progress** — If progress.md exists in the spec directory, append a log entry with timestamp and summary of what was done.
 
-7. **Commit** — Stage all changes and commit with a descriptive message. The commit message should reference the task number and name.
+7. **Commit** — Stage ONLY source code changes and commit with a descriptive message. The commit message should reference the task number and name.
 
 ## Constraints
 
@@ -213,12 +213,14 @@ PROMPT
 
 write_fix_prompt() {
   local spec_dir="$1"
-  local review_output_path="$2"
+  local iter_file="$2"
   local prompt_path="$3"
-  local review_excerpt=""
 
-  if [[ -f "$review_output_path" ]]; then
-    review_excerpt="$(extract_parseable_text "$review_output_path" | head -250)"
+  # Extract the review section from the iteration .md file
+  local review_excerpt=""
+  if [[ -f "$iter_file" && -s "$iter_file" ]]; then
+    # Get everything from "## Review" onward (the review output and any recheck)
+    review_excerpt=$(sed -n '/^## Review/,$ p' "$iter_file" | head -250)
   fi
 
   local verify_section=""
@@ -240,24 +242,17 @@ ${spec_dir}
 
 ## Review Findings
 
-The review output is at: ${review_output_path}
-
-Here is an excerpt of the review findings:
-
----
 ${review_excerpt}
----
 
 ## Your Job
 
-1. Read the full review output at the path above
-2. Fix ALL must-fix findings
-3. Fix ALL should-fix findings
-4. For each fix, verify it doesn't break anything else
+1. Fix ALL must-fix findings
+2. Fix ALL should-fix findings
+3. For each fix, verify it doesn't break anything else
 ${verify_section}
 ${test_section}
-5. Update task documentation if the fixes affect acceptance criteria or notes
-6. Commit the fixes with a descriptive message
+4. Update task documentation if the fixes affect acceptance criteria or notes
+5. Commit the fixes with a descriptive message using \`git add <specific files>\`
 
 ## Constraints
 

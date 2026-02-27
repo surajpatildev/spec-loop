@@ -4,13 +4,18 @@
 # CRITICAL: Each invocation creates a SEPARATE Claude session.
 # We use --print mode (no session reuse) and redirect stderr separately
 # to keep the stream-json output clean.
+#
+# The raw NDJSON is saved to a temp file. Callers extract what they need
+# (cost, status, result text) via parser.sh helpers, then clean up.
 
+# Run Claude and save raw NDJSON output to a file.
+# Usage: run_claude <prompt_file> <ndjson_output_file>
 run_claude() {
   local prompt_file="$1"
   local output_file="$2"
-  local stderr_file="${output_file%.log}.stderr"
 
   local -a cmd=(
+    "env" "-u" "CLAUDECODE"
     "$CLAUDE_BIN"
     "--dangerously-skip-permissions"
     "--print"
@@ -42,10 +47,11 @@ run_claude() {
     return 0
   fi
 
-  step_info "session  ${C_DIM}model=${CLAUDE_MODEL:-default}${C_RESET}"
-
   # CRITICAL: stderr goes to a separate file to prevent corruption of stream-json.
   # CRITICAL: PIPESTATUS must be read on the very next line after the pipeline.
+  local stderr_file
+  stderr_file=$(mktemp)
+
   set +e
   "${cmd[@]}" < "$prompt_file" 2>"$stderr_file" | tee "$output_file" | while IFS= read -r line; do
     process_stream_event "$line"
@@ -61,6 +67,7 @@ run_claude() {
     done
   fi
 
+  rm -f "$stderr_file" 2>/dev/null
   return "$status"
 }
 
