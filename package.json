@@ -22,9 +22,11 @@
   },
   "files": [
     "bin/",
-    "lib/",
+    "src/",
+    "Cargo.toml",
     ".agents/",
     "install.sh",
+    "uninstall.sh",
     "LICENSE",
     "README.md"
   ]

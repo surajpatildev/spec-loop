@@ -61,6 +61,8 @@ Or via npm:
 npm install -g @specloop/cli
 ```
 
+`spec-loop` will compile and run the Rust engine via `cargo` when needed.
+
 ## Quick Start
 
 ```bash
@@ -173,9 +175,8 @@ When a run ends via `--once` or `--max-tasks`, the next invocation for the same 
 ## Requirements
 
 - [Claude Code](https://claude.ai/claude-code) CLI
-- `jq` for JSON parsing
+- Rust toolchain (`cargo`) for local build/install
 - `git` for version control
-- Bash 3.2+ (macOS default works)
 
 ## License
 

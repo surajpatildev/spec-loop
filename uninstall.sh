@@ -10,7 +10,7 @@ echo ""
 echo "  Uninstalling spec-loop..."
 
 if [[ -f "$BIN_DIR/spec-loop" ]]; then
-  rm -f "$BIN_DIR/spec-loop"
+  rm "$BIN_DIR/spec-loop"
   echo "  ✓ Removed $BIN_DIR/spec-loop"
 fi
 
@@ -21,7 +21,4 @@ fi
 
 echo ""
 echo "  ✓ spec-loop uninstalled"
-echo ""
-echo "  Note: Project files (.speclooprc, .agents/, .spec-loop/) are not removed."
-echo "  Remove them manually if desired."
 echo ""

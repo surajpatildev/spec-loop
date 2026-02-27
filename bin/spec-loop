@@ -1,84 +1,27 @@
 #!/usr/bin/env bash
-# spec-loop — spec-driven autonomous development loop
-# Entry point: sources lib modules and dispatches commands.
-
+# spec-loop entrypoint wrapper for the Rust engine
 set -euo pipefail
 
-# ── Resolve install directory ────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="${SCRIPT_DIR}/../lib"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# ── Source core modules ──────────────────────────────
-source "${LIB_DIR}/core/constants.sh"
-source "${LIB_DIR}/core/utils.sh"
-source "${LIB_DIR}/core/logging.sh"
-source "${LIB_DIR}/core/args.sh"
-source "${LIB_DIR}/core/config.sh"
+if [[ -n "${SPEC_LOOP_BIN:-}" ]]; then
+  exec "${SPEC_LOOP_BIN}" "$@"
+fi
 
-# ── Source feature modules (when they exist) ─────────
-for module in \
-  "${LIB_DIR}/setup/init.sh" \
-  "${LIB_DIR}/setup/preflight.sh" \
-  "${LIB_DIR}/tasks/spec.sh" \
-  "${LIB_DIR}/tasks/state.sh" \
-  "${LIB_DIR}/engine/runner.sh" \
-  "${LIB_DIR}/engine/stream.sh" \
-  "${LIB_DIR}/engine/prompt.sh" \
-  "${LIB_DIR}/engine/parser.sh" \
-  "${LIB_DIR}/engine/loop.sh" \
-  "${LIB_DIR}/safety/circuit_breaker.sh" \
-  "${LIB_DIR}/safety/rate_limiter.sh" \
-  "${LIB_DIR}/safety/session.sh" \
-  "${LIB_DIR}/ui/terminal.sh" \
-  "${LIB_DIR}/ui/spinner.sh" \
-  "${LIB_DIR}/ui/preview.sh" \
-  "${LIB_DIR}/ui/display.sh"; do
-  # shellcheck disable=SC1090
-  [[ -f "$module" ]] && source "$module"
-done
+if [[ -x "${ROOT_DIR}/target/release/spec-loop" ]]; then
+  exec "${ROOT_DIR}/target/release/spec-loop" "$@"
+fi
 
-# ── Command dispatch ─────────────────────────────────
-cmd="${1:-help}"
-shift || true
+if [[ -x "${ROOT_DIR}/target/debug/spec-loop" ]]; then
+  exec "${ROOT_DIR}/target/debug/spec-loop" "$@"
+fi
 
-case "$cmd" in
-  init)
-    parse_init_args "$@"
-    if declare -f cmd_init >/dev/null 2>&1; then
-      cmd_init
-    else
-      die "init module not yet loaded"
-    fi
-    ;;
+if command -v cargo >/dev/null 2>&1; then
+  cargo build --release --manifest-path "${ROOT_DIR}/Cargo.toml" --bin spec-loop >/dev/null
+  exec "${ROOT_DIR}/target/release/spec-loop" "$@"
+fi
 
-  run)
-    parse_run_args "$@"
-    load_config
-    if declare -f cmd_run >/dev/null 2>&1; then
-      cmd_run
-    else
-      die "engine module not yet loaded"
-    fi
-    ;;
-
-  status)
-    load_config
-    if declare -f cmd_status >/dev/null 2>&1; then
-      cmd_status
-    else
-      die "status module not yet loaded"
-    fi
-    ;;
-
-  version|-v|--version)
-    echo "spec-loop v${SPECLOOP_VERSION}"
-    ;;
-
-  help|-h|--help)
-    usage
-    ;;
-
-  *)
-    die "Unknown command: $cmd\n\n  Run 'spec-loop help' for usage."
-    ;;
-esac
+echo "spec-loop binary not found and cargo is not installed." >&2
+echo "Build with: cargo build --release" >&2
+exit 1
