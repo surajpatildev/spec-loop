@@ -5,7 +5,7 @@ Spec-driven autonomous development loop powered by Claude Code.
 Write a spec, then let `spec-loop` build it — task by task, with automated code review and fix cycles.
 
 ```
-spec-loop v0.3.0
+spec-loop v0.3.1
 
 ╭─ Spec ──────────────────────────────────────────╮
 │                                                  │
@@ -54,11 +54,9 @@ spec-loop version
 Install target:
 
 - binary: `~/.local/bin/spec-loop`
-- runtime: native Rust binary
 
 Notes:
 
-- installer compiles from source using `cargo`
 - first install may take ~30-90 seconds depending on machine/cache
 
 ### CLI (local development)

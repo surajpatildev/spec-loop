@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (Unreleased)
+## 0.3.1 (Unreleased)
 
 Initial release.
 
@@ -10,6 +10,7 @@ Initial release.
 - Live stream spinner with elapsed timer during Claude execution
 - Improved spec summary panel: pending, in-progress, in-review, blocked counts
 - Safer panel rendering with automatic line truncation (prevents box overflow)
+- Installer UX simplified with generic spinner-based phases (no implementation-detail messaging)
 - Spec-driven build→review→fix loop
 - Namespaced skills for loop workflow: spec-loop-spec, spec-loop-status
 - Claude Code stream-json integration

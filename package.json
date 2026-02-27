@@ -1,6 +1,6 @@
 {
   "name": "@specloop/cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Spec-driven autonomous development loop for AI coding agents",
   "bin": {
     "spec-loop": "./bin/spec-loop"
