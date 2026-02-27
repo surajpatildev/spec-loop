@@ -165,6 +165,7 @@ impl Ui {
     pub fn box_line(&self, content: &str, width: usize) {
         let s = self.symbols();
         let inner = width.saturating_sub(2);
+        let content = truncate_to_width(content, inner, self.unicode);
         let visible_len = content.chars().count();
         let pad = if visible_len < inner {
             " ".repeat(inner - visible_len)
@@ -204,6 +205,18 @@ impl Ui {
         format!("{} {}/{} {}", bar, current, total, label)
     }
 
+    pub fn panel_width(&self, min: usize, max: usize) -> usize {
+        if max <= min {
+            return min;
+        }
+        let columns = env::var("COLUMNS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(min + 4);
+        let width = columns.saturating_sub(4);
+        width.clamp(min, max)
+    }
+
     pub fn diamond(&self) -> &'static str {
         self.symbols().diamond
     }
@@ -211,4 +224,23 @@ impl Ui {
     pub fn arrow(&self) -> &'static str {
         self.symbols().arrow
     }
+}
+
+fn truncate_to_width(input: &str, max_width: usize, unicode: bool) -> String {
+    if input.chars().count() <= max_width {
+        return input.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let ellipsis = if unicode { "…" } else { "..." };
+    let ellipsis_len = ellipsis.chars().count();
+    if max_width <= ellipsis_len {
+        return input.chars().take(max_width).collect();
+    }
+
+    let mut out: String = input.chars().take(max_width - ellipsis_len).collect();
+    out.push_str(ellipsis);
+    out
 }

@@ -122,6 +122,7 @@ pub fn cmd_init(args: &InitArgs, ui: &Ui) -> Result<i32> {
 pub fn cmd_status(ui: &Ui) -> Result<i32> {
     let cfg = load_config(None)?;
     ui.print_header(SPECLOOP_VERSION);
+    let panel_width = ui.panel_width(52, 72);
 
     let specs_dir = Path::new(&cfg.specs_dir);
     if !specs_dir.is_dir() {
@@ -143,14 +144,16 @@ pub fn cmd_status(ui: &Ui) -> Result<i32> {
         let total = count_total(&spec_dir);
         let done_count = count_status(&spec_dir, TaskStatus::Done);
         let pending_count = count_status(&spec_dir, TaskStatus::Pending);
+        let in_progress_count = count_status(&spec_dir, TaskStatus::InProgress);
         let in_review_count = count_status(&spec_dir, TaskStatus::InReview);
+        let blocked_count = count_status(&spec_dir, TaskStatus::Blocked);
         let remaining = count_remaining(&spec_dir);
         let active_count = count_active(&spec_dir);
 
         if active_count > 0 {
             found_active = true;
-            ui.box_header(&name, 52);
-            ui.box_empty(52);
+            ui.box_header(&name, panel_width);
+            ui.box_empty(panel_width);
             ui.box_line(
                 &format!(
                     "  {} {} {} remaining",
@@ -158,26 +161,38 @@ pub fn cmd_status(ui: &Ui) -> Result<i32> {
                     ui.diamond(),
                     remaining
                 ),
-                52,
+                panel_width,
             );
             ui.box_line(
                 &format!(
-                    "  {} pending {} {} in-review",
+                    "  {} pending {} {} in-progress",
                     pending_count,
                     ui.diamond(),
-                    in_review_count
+                    in_progress_count
                 ),
-                52,
+                panel_width,
             );
-            ui.box_line(&format!("  {}", current_branch()), 52);
+            ui.box_line(
+                &format!(
+                    "  {} in-review {} {} blocked",
+                    in_review_count,
+                    ui.diamond(),
+                    blocked_count
+                ),
+                panel_width,
+            );
+            ui.box_line(&format!("  {}", current_branch()), panel_width);
 
             if let Some(next_task) = find_next_task(&spec_dir) {
                 let task_name = get_task_name(&next_task);
-                ui.box_line(&format!("  {} Next: {}", ui.arrow(), task_name), 52);
+                ui.box_line(
+                    &format!("  {} Next: {}", ui.arrow(), task_name),
+                    panel_width,
+                );
             }
 
-            ui.box_empty(52);
-            ui.box_footer(52);
+            ui.box_empty(panel_width);
+            ui.box_footer(panel_width);
         }
     }
 
@@ -202,6 +217,7 @@ pub fn cmd_status(ui: &Ui) -> Result<i32> {
 pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
     let cfg = load_config(Some(args))?;
     preflight(&cfg)?;
+    let panel_width = ui.panel_width(52, 72);
 
     let session_dir = Path::new(&cfg.session_dir);
     let mut cb = CircuitBreaker::load(session_dir)?;
@@ -272,13 +288,15 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
     let total_tasks = count_total(&spec_dir);
     let done_tasks = count_status(&spec_dir, TaskStatus::Done);
     let pending_tasks = count_status(&spec_dir, TaskStatus::Pending);
+    let in_progress_tasks = count_status(&spec_dir, TaskStatus::InProgress);
     let in_review_tasks = count_status(&spec_dir, TaskStatus::InReview);
+    let blocked_tasks = count_status(&spec_dir, TaskStatus::Blocked);
     let remaining_tasks = count_remaining(&spec_dir);
 
     ui.print_header(SPECLOOP_VERSION);
-    ui.box_header("Spec", 52);
-    ui.box_empty(52);
-    ui.box_line(&format!("  {}", spec_name), 52);
+    ui.box_header("Spec", panel_width);
+    ui.box_empty(panel_width);
+    ui.box_line(&format!("  {}", spec_name), panel_width);
     ui.box_line(
         &format!(
             "  {} {} {} remaining",
@@ -286,26 +304,35 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             ui.diamond(),
             remaining_tasks
         ),
-        52,
+        panel_width,
     );
     ui.box_line(
         &format!(
-            "  {} pending {} {} in-review",
+            "  {} pending {} {} in-progress",
             pending_tasks,
             ui.diamond(),
-            in_review_tasks
+            in_progress_tasks
         ),
-        52,
+        panel_width,
     );
-    ui.box_line(&format!("  {}", current_branch()), 52);
+    ui.box_line(
+        &format!(
+            "  {} in-review {} {} blocked",
+            in_review_tasks,
+            ui.diamond(),
+            blocked_tasks
+        ),
+        panel_width,
+    );
+    ui.box_line(&format!("  {}", current_branch()), panel_width);
     if cfg.max_tasks_per_run > 0 {
         ui.box_line(
             &format!("  Task budget  {} this run", cfg.max_tasks_per_run),
-            52,
+            panel_width,
         );
     }
-    ui.box_empty(52);
-    ui.box_footer(52);
+    ui.box_empty(panel_width);
+    ui.box_footer(panel_width);
 
     let mut total_cost = session_total_cost(&session_path);
     let total_iterations_base = session_total_iterations(&session_path);
@@ -378,7 +405,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
         if next_task_name.is_empty() {
             ui.separator(
                 &format!("Iteration {} of {}", loop_index, cfg.max_loops),
-                52,
+                panel_width,
             );
         } else {
             ui.separator(
@@ -388,7 +415,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
                     ui.diamond(),
                     next_task_name
                 ),
-                52,
+                panel_width,
             );
         }
 
@@ -1035,21 +1062,28 @@ fn loop_complete(
 ) -> Result<()> {
     let end_epoch = chrono::Utc::now().timestamp();
     let duration_s = (end_epoch - started_epoch).max(0) as u64;
+    let panel_width = ui.panel_width(52, 72);
 
-    ui.box_header("Complete", 52);
-    ui.box_empty(52);
-    ui.box_line("  All tasks done", 52);
-    ui.box_empty(52);
-    ui.box_line(&format!("  Spec        {}", spec_name), 52);
-    ui.box_line(&format!("  Tasks       {} completed", total_tasks), 52);
-    ui.box_line(&format!("  Iterations  {}", iterations), 52);
+    ui.box_header("Complete", panel_width);
+    ui.box_empty(panel_width);
+    ui.box_line("  All tasks done", panel_width);
+    ui.box_empty(panel_width);
+    ui.box_line(&format!("  Spec        {}", spec_name), panel_width);
+    ui.box_line(
+        &format!("  Tasks       {} completed", total_tasks),
+        panel_width,
+    );
+    ui.box_line(&format!("  Iterations  {}", iterations), panel_width);
     ui.box_line(
         &format!("  Duration    {}", format_duration(duration_s)),
-        52,
+        panel_width,
     );
-    ui.box_line(&format!("  Cost        {}", format_cost(total_cost)), 52);
-    ui.box_empty(52);
-    ui.box_footer(52);
+    ui.box_line(
+        &format!("  Cost        {}", format_cost(total_cost)),
+        panel_width,
+    );
+    ui.box_empty(panel_width);
+    ui.box_footer(panel_width);
 
     finalize_session(
         session_path,

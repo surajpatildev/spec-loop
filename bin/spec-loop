@@ -20,15 +20,16 @@ if [[ -n "${SPEC_LOOP_BIN:-}" ]]; then
   exec "${SPEC_LOOP_BIN}" "$@"
 fi
 
-if command -v cargo >/dev/null 2>&1; then
-  exec cargo run --quiet --manifest-path "${ROOT_DIR}/Cargo.toml" --bin spec-loop -- "$@"
-fi
-
 if [[ -x "${ROOT_DIR}/target/release/spec-loop" ]]; then
   exec "${ROOT_DIR}/target/release/spec-loop" "$@"
 fi
 
 if [[ -x "${ROOT_DIR}/target/debug/spec-loop" ]]; then
+  exec "${ROOT_DIR}/target/debug/spec-loop" "$@"
+fi
+
+if command -v cargo >/dev/null 2>&1; then
+  cargo build --quiet --manifest-path "${ROOT_DIR}/Cargo.toml" --bin spec-loop
   exec "${ROOT_DIR}/target/debug/spec-loop" "$@"
 fi
 

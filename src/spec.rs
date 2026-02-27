@@ -18,8 +18,8 @@ impl TaskStatus {
     pub fn from_str(s: &str) -> Self {
         match s.trim().to_lowercase().as_str() {
             "pending" => Self::Pending,
-            "in-progress" => Self::InProgress,
-            "in-review" => Self::InReview,
+            "in-progress" | "in progress" | "inprogress" => Self::InProgress,
+            "in-review" | "in review" | "reviewing" => Self::InReview,
             "done" => Self::Done,
             "blocked" => Self::Blocked,
             _ => Self::Unknown,

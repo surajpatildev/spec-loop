@@ -5,12 +5,14 @@ Spec-driven autonomous development loop powered by Claude Code.
 Write a spec, then let `spec-loop` build it — task by task, with automated code review and fix cycles.
 
 ```
-spec-loop v0.2.0
+spec-loop v0.3.0
 
 ╭─ Spec ──────────────────────────────────────────╮
 │                                                  │
 │  user-auth                                       │
 │  ████████░░░░░░░░ 3/7 done ◆ 4 remaining         │
+│  2 pending ◆ 1 in-progress                        │
+│  1 in-review ◆ 0 blocked                          │
 │  feat/user-auth                                  │
 │                                                  │
 ╰──────────────────────────────────────────────────╯
@@ -18,10 +20,12 @@ spec-loop v0.2.0
 ── Iteration 1 of 25 ─────────────────────────────
 
 ● build
+    → session  model=claude-opus-4-6  id=9af31c8d
+    ⠹ #4 Bash npm run lint && npm run typecheck 00:12
     → Read     AGENTS.md
     → Write    src/api/routes/auth.ts
     → Bash     npm run lint && npm run typecheck
-    ✓ result   45.2s ◆ $0.12
+    ✓ result   45s ◆ $0.12 ◆ 8 tools
 
 ● review
     ✓ PASS     0 must-fix ◆ 0 should-fix

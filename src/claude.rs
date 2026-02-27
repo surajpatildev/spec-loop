@@ -1,8 +1,11 @@
 use anyhow::{anyhow, Context, Result};
+use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use serde_json::Value;
-use std::io::{BufRead, BufReader, Write};
+use std::env;
+use std::io::{self, BufRead, BufReader, IsTerminal, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use crate::config::Config;
 use crate::util::{format_cost, format_duration};
@@ -63,6 +66,7 @@ pub fn run_claude(
     let mut stream_tools = 0_u32;
     let cwd = std::env::current_dir().ok();
     let mut last_bash_tool_id = String::new();
+    let mut stream_renderer = StreamRenderer::new(verbose);
 
     for line in reader.lines() {
         let line = line.context("failed to read claude stream")?;
@@ -75,9 +79,11 @@ pub fn run_claude(
             stream_tools,
             &mut last_bash_tool_id,
             cwd.as_deref(),
+            &mut stream_renderer,
         ));
         lines.push(line);
     }
+    stream_renderer.finish();
 
     let status = child.wait().context("failed waiting for claude")?;
     if !status.success() {
@@ -93,10 +99,14 @@ fn render_stream_event(
     current_tool_count: u32,
     last_bash_tool_id: &mut String,
     cwd: Option<&Path>,
+    renderer: &mut StreamRenderer,
 ) -> u32 {
     let Ok(v) = serde_json::from_str::<Value>(line) else {
         if verbose {
-            println!("      → non-json: {}", trim_single_line(line, 100));
+            renderer.print_line(&format!(
+                "      → non-json: {}",
+                trim_single_line(line, 100)
+            ));
         }
         return 0;
     };
@@ -112,7 +122,8 @@ fn render_stream_event(
                     .and_then(Value::as_str)
                     .unwrap_or("unknown");
                 let short = session.chars().take(8).collect::<String>();
-                println!("      → session  model={}  id={}", model, short);
+                renderer.print_line(&format!("      → session  model={}  id={}", model, short));
+                renderer.set_status(&format!("thinking - {}", model));
             }
             0
         }
@@ -157,21 +168,43 @@ fn render_stream_event(
                         }
 
                         if cmd.is_empty() {
-                            println!("      → {}", tool_name);
+                            renderer.print_line(&format!("      → {}", tool_name));
+                            renderer.set_status(&format!(
+                                "#{} {}",
+                                current_tool_count + 1,
+                                tool_name
+                            ));
                         } else {
-                            println!("      → {:<8} {}", tool_name, trim_single_line(&cmd, 80));
+                            renderer.print_line(&format!(
+                                "      → {:<8} {}",
+                                tool_name,
+                                trim_single_line(&cmd, 80)
+                            ));
+                            renderer.set_status(&format!(
+                                "#{} {} {}",
+                                current_tool_count + 1,
+                                tool_name,
+                                trim_single_line(&cmd, 48)
+                            ));
                         }
                         1
                     }
                     "thinking" => {
-                        println!("      → thinking...");
+                        if renderer.has_spinner() {
+                            renderer.set_status("thinking");
+                        } else {
+                            renderer.print_line("      → thinking...");
+                        }
                         0
                     }
                     "text" => {
                         if verbose {
                             let text = content.get("text").and_then(Value::as_str).unwrap_or("");
                             if !text.trim().is_empty() {
-                                println!("      → text: {}", trim_single_line(text, 100));
+                                renderer.print_line(&format!(
+                                    "      → text: {}",
+                                    trim_single_line(text, 100)
+                                ));
                             }
                         }
                         0
@@ -200,14 +233,17 @@ fn render_stream_event(
                         .unwrap_or(false);
                     if is_error {
                         let msg = extract_tool_result_text(content.get("content"));
-                        println!("      → error: {}", trim_single_line(msg, 100));
+                        renderer
+                            .print_line(&format!("      → error: {}", trim_single_line(msg, 100)));
+                        renderer.set_status("thinking");
                     } else if !last_bash_tool_id.is_empty() && tool_use_id == last_bash_tool_id {
                         let msg = extract_tool_result_text(content.get("content"));
                         if msg.trim().is_empty() {
-                            println!("      → done");
+                            renderer.print_line("      → done");
                         } else {
-                            println!("      → {}", trim_single_line(msg, 100));
+                            renderer.print_line(&format!("      → {}", trim_single_line(msg, 100)));
                         }
+                        renderer.set_status("thinking");
                         last_bash_tool_id.clear();
                     }
                 }
@@ -221,15 +257,67 @@ fn render_stream_event(
                 .unwrap_or(0.0);
             let duration_ms = v.get("duration_ms").and_then(Value::as_u64).unwrap_or(0);
             let dur = format_duration(duration_ms / 1000);
-            println!(
+            renderer.finish();
+            renderer.print_line(&format!(
                 "      ✓ result   {} ◆ {} ◆ {} tools",
                 dur,
                 format_cost(cost),
                 current_tool_count
-            );
+            ));
             0
         }
         _ => 0,
+    }
+}
+
+struct StreamRenderer {
+    spinner: Option<ProgressBar>,
+}
+
+impl StreamRenderer {
+    fn new(verbose: bool) -> Self {
+        if verbose || !io::stdout().is_terminal() {
+            return Self { spinner: None };
+        }
+
+        let pb = ProgressBar::with_draw_target(None, ProgressDrawTarget::stdout());
+        let template = if env::var_os("NO_COLOR").is_some() {
+            "      {spinner} {msg} {elapsed_precise}"
+        } else {
+            "      {spinner:.cyan} {msg} {elapsed_precise}"
+        };
+        let style = ProgressStyle::with_template(template)
+            .unwrap_or_else(|_| ProgressStyle::default_spinner())
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]);
+        pb.set_style(style);
+        pb.set_message("starting");
+        pb.enable_steady_tick(Duration::from_millis(120));
+
+        Self { spinner: Some(pb) }
+    }
+
+    fn has_spinner(&self) -> bool {
+        self.spinner.is_some()
+    }
+
+    fn set_status(&self, status: &str) {
+        if let Some(pb) = &self.spinner {
+            pb.set_message(status.to_string());
+        }
+    }
+
+    fn print_line(&self, line: &str) {
+        if let Some(pb) = &self.spinner {
+            pb.println(line.to_string());
+        } else {
+            println!("{line}");
+        }
+    }
+
+    fn finish(&mut self) {
+        if let Some(pb) = self.spinner.take() {
+            pb.finish_and_clear();
+        }
     }
 }
 
