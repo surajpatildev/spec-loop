@@ -39,34 +39,51 @@ The loop continues until all tasks are done, a task is blocked, or the circuit b
 
 ## Install
 
-### Skills (Claude Code integration)
-
-```bash
-npx skills add specloop/spec-loop
-```
-
-Installs namespaced skills to `~/.agents/skills/` with symlinks to `~/.claude/skills/`:
-- `/spec-loop-spec` — Create feature specs for spec-loop
-- `/spec-loop-status` — Show spec-loop progress
-
-### CLI (the automation loop)
+### CLI (recommended)
 
 ```bash
 curl -sSf https://raw.githubusercontent.com/surajpatildev/spec-loop/main/install.sh | bash
+hash -r
+spec-loop version
 ```
 
-Or via npm:
-
-```bash
-npm install -g @specloop/cli
-```
-
-`spec-loop` will compile and run the Rust engine via `cargo` when needed.
-
-CLI install target:
+Install target:
 
 - binary: `~/.local/bin/spec-loop`
-- runtime: native Rust binary (`target/release/spec-loop` during local dev)
+- runtime: native Rust binary
+
+Notes:
+
+- installer compiles from source using `cargo`
+- first install may take ~30-90 seconds depending on machine/cache
+
+### CLI (local development)
+
+```bash
+git clone https://github.com/surajpatildev/spec-loop.git
+cd spec-loop
+cargo check
+./bin/spec-loop version
+```
+
+### Skills (Claude Code integration)
+
+Install all repo skills into your project:
+
+```bash
+npx -y skills add surajpatildev/spec-loop --all -y
+```
+
+List available skills without installing:
+
+```bash
+npx -y skills add surajpatildev/spec-loop -l
+```
+
+This repo currently provides:
+
+- `/spec-loop-spec` — Create feature specs for spec-loop
+- `/spec-loop-status` — Show spec-loop progress
 
 ## Quick Start
 
@@ -172,7 +189,7 @@ When a run ends via `--once` or `--max-tasks`, the next invocation for the same 
 
 ## Safety
 
-- **Circuit breaker** — Stops after N iterations without git commits (stagnation detection)
+- **Circuit breaker** — Stops after repeated iterations without spec/task progress
 - **Session resume** — `--resume` picks up where the last run stopped
 - **Dry run** — `--dry-run` to preview without calling Claude Code
 
@@ -181,6 +198,31 @@ When a run ends via `--once` or `--max-tasks`, the next invocation for the same 
 - [Claude Code](https://claude.ai/claude-code) CLI
 - Rust toolchain (`cargo`) for local build/install
 - `git` recommended (optional)
+- `tar` (used by installer)
+
+## Troubleshooting
+
+`spec-loop` not found after install:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+hash -r
+spec-loop version
+```
+
+Cargo missing:
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+```
+
+Reinstall latest:
+
+```bash
+curl -sSf https://raw.githubusercontent.com/surajpatildev/spec-loop/main/install.sh | bash
+hash -r
+spec-loop version
+```
 
 ## License
 

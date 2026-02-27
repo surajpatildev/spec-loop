@@ -5,6 +5,8 @@
 Initial release.
 
 - Rust core runtime and CLI engine (replaces shell runtime)
+- Installer uses GitHub archive download + quiet build output
+- Installer safely replaces old symlinks without clobbering source files
 - Spec-driven build→review→fix loop
 - Namespaced skills for loop workflow: spec-loop-spec, spec-loop-status
 - Claude Code stream-json integration
