@@ -24,6 +24,7 @@ cmd_run() {
   session_init
 
   local session_path loop_index resume_phase="" resume_before_sha=""
+  local continuation_mode="false"
 
   if [[ "$RESUME" == "true" ]] && session_load_state; then
     spec_dir="$RESUME_SPEC_DIR"
@@ -37,13 +38,26 @@ cmd_run() {
     [[ -f "${session_path}/session.json" ]] || _session_json_init "$session_path" "$spec_dir" "$spec_name"
     [[ -f "${session_path}/run.md" ]] || _session_markdown_init "$session_path" "$spec_name" "$spec_dir"
   else
-    local session_ts
-    session_ts="$(timestamp)"
-    session_path="${SESSION_DIR}/${session_ts}"
-    loop_index=1
-    mkdir -p "$session_path"
-    _session_json_init "$session_path" "$spec_dir" "$spec_name"
-    _session_markdown_init "$session_path" "$spec_name" "$spec_dir"
+    local continuation_path
+    continuation_path="$(session_continuation_for_spec "$spec_dir" || true)"
+    if [[ -n "$continuation_path" && -d "$continuation_path" ]]; then
+      continuation_mode="true"
+      session_path="$continuation_path"
+      mkdir -p "$session_path"
+      loop_index=$(( $(session_iterations_count "$session_path") + 1 ))
+      step_info "Continuing session $(basename "$session_path") at iteration ${loop_index}"
+      [[ -f "${session_path}/session.json" ]] || _session_json_init "$session_path" "$spec_dir" "$spec_name"
+      [[ -f "${session_path}/run.md" ]] || _session_markdown_init "$session_path" "$spec_name" "$spec_dir"
+    else
+      local session_ts session_slug
+      session_ts="$(timestamp)"
+      session_slug="$(slugify "$spec_name")"
+      session_path="${SESSION_DIR}/${session_ts}_${session_slug}"
+      loop_index=1
+      mkdir -p "$session_path"
+      _session_json_init "$session_path" "$spec_dir" "$spec_name"
+      _session_markdown_init "$session_path" "$spec_name" "$spec_dir"
+    fi
   fi
 
   local total_tasks done_tasks remaining_tasks
@@ -69,12 +83,22 @@ cmd_run() {
 
   local total_cost=0
   local start_epoch
-  start_epoch=$(date +%s)
+  local total_iterations_base=0
+  if [[ -f "${session_path}/session.json" ]]; then
+    total_cost="$(session_total_cost "$session_path")"
+    total_iterations_base="$(session_total_iterations "$session_path")"
+    start_epoch="$(session_started_epoch "$session_path")"
+  else
+    start_epoch=$(date +%s)
+  fi
   local iterations_completed=0
+
+  _session_runlog_invocation_header "$session_path" "$RESUME" "$continuation_mode"
 
   while [[ "$loop_index" -le "$MAX_LOOPS" ]]; do
     if ! cb_check; then
-      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "CIRCUIT_OPEN" "$iterations_completed"
+      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "CIRCUIT_OPEN" "$((total_iterations_base + iterations_completed))"
+      session_clear_state
       return "$EXIT_CIRCUIT_OPEN"
     fi
 
@@ -82,14 +106,14 @@ cmd_run() {
     done_tasks="$(count_done_tasks "$spec_dir")"
 
     if [[ "$remaining_tasks" -eq 0 ]]; then
-      _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$iterations_completed"
+      _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$((total_iterations_base + iterations_completed))"
       session_clear_state
       return "$EXIT_OK"
     fi
 
     if [[ "$MAX_TASKS_PER_RUN" -gt 0 && "$iterations_completed" -ge "$MAX_TASKS_PER_RUN" ]]; then
       step_ok "Reached task budget (${MAX_TASKS_PER_RUN}) for this run"
-      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "TASK_LIMIT" "$iterations_completed"
+      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "TASK_LIMIT" "$((total_iterations_base + iterations_completed))"
       session_clear_state
       return "$EXIT_OK"
     fi
@@ -139,6 +163,8 @@ cmd_run() {
       ndjson_tmp=$(mktemp)
       prompt_tmp=$(mktemp)
       write_build_prompt "$spec_dir" "$prompt_tmp"
+      local build_prompt_text
+      build_prompt_text="$(cat "$prompt_tmp")"
 
       if ! run_claude "$prompt_tmp" "$ndjson_tmp"; then
         rm -f "$prompt_tmp" "$ndjson_tmp" 2>/dev/null
@@ -148,6 +174,8 @@ cmd_run() {
       build_cost="$(extract_cost "$ndjson_tmp")"
       build_duration="$(extract_duration_ms "$ndjson_tmp")"
       build_text="$(extract_parseable_text "$ndjson_tmp")"
+      local build_claude_session_id
+      build_claude_session_id="$(extract_claude_session_id "$ndjson_tmp")"
       build_status="$(parse_kv_value "BUILD_STATUS" "$ndjson_tmp")"
       total_cost=$(echo "$total_cost + $build_cost" | bc 2>/dev/null || echo "$total_cost")
 
@@ -158,7 +186,7 @@ cmd_run() {
 
       rm -f "$ndjson_tmp" "$prompt_tmp" 2>/dev/null
 
-      _session_runlog_phase "$session_path" "$loop_index" "Build" "${build_status:-unknown}" "$build_cost" "$build_duration" "$build_text"
+      _session_runlog_phase "$session_path" "$loop_index" "Build" "${build_status:-unknown}" "$build_cost" "$build_duration" "$build_text" "$build_prompt_text" "$build_claude_session_id"
 
       after_build_sha=$(get_head_sha)
 
@@ -168,7 +196,8 @@ cmd_run() {
         local iter_seconds
         iter_seconds=$(( $(date +%s) - iteration_start_epoch ))
         _session_log "$session_path" "$loop_index" "complete" "$build_cost" "$after_build_sha" "$next_task_name" "$iter_seconds" 0 0
-        _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$iterations_completed"
+        _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$((total_iterations_base + iterations_completed))"
+        session_clear_state
         return "$EXIT_OK"
       fi
 
@@ -177,7 +206,8 @@ cmd_run() {
         local iter_seconds
         iter_seconds=$(( $(date +%s) - iteration_start_epoch ))
         _session_log "$session_path" "$loop_index" "blocked" "$build_cost" "$after_build_sha" "$next_task_name" "$iter_seconds" 0 0
-        _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+        _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$((total_iterations_base + iterations_completed))"
+        session_clear_state
         return "$EXIT_BLOCKED"
       fi
 
@@ -197,7 +227,8 @@ cmd_run() {
             local iter_seconds
             iter_seconds=$(( $(date +%s) - iteration_start_epoch ))
             _session_log "$session_path" "$loop_index" "blocked-no-pending" "$build_cost" "$after_build_sha" "$next_task_name" "$iter_seconds" 0 0
-            _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+            _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$((total_iterations_base + iterations_completed))"
+            session_clear_state
             return "$EXIT_BLOCKED"
           fi
           step_ok "No pending tasks"
@@ -205,7 +236,8 @@ cmd_run() {
           local iter_seconds
           iter_seconds=$(( $(date +%s) - iteration_start_epoch ))
           _session_log "$session_path" "$loop_index" "no-pending" "$build_cost" "$after_build_sha" "$next_task_name" "$iter_seconds" 0 0
-          _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$iterations_completed"
+          _loop_complete "$session_path" "$spec_name" "$total_tasks" "$start_epoch" "$total_cost" "$((total_iterations_base + iterations_completed))"
+          session_clear_state
           return "$EXIT_OK"
           ;;
         BLOCKED)
@@ -213,7 +245,8 @@ cmd_run() {
           local iter_seconds
           iter_seconds=$(( $(date +%s) - iteration_start_epoch ))
           _session_log "$session_path" "$loop_index" "blocked" "$build_cost" "$after_build_sha" "$next_task_name" "$iter_seconds" 0 0
-          _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+          _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$((total_iterations_base + iterations_completed))"
+          session_clear_state
           return "$EXIT_BLOCKED"
           ;;
         COMPLETED_TASK)
@@ -262,6 +295,8 @@ cmd_run() {
     ndjson_tmp=$(mktemp)
     prompt_tmp=$(mktemp)
     write_review_prompt "$spec_dir" "$prompt_tmp" "$before_sha"
+    local review_prompt_text
+    review_prompt_text="$(cat "$prompt_tmp")"
 
     if ! run_claude "$prompt_tmp" "$ndjson_tmp"; then
       rm -f "$prompt_tmp" "$ndjson_tmp" 2>/dev/null
@@ -271,6 +306,8 @@ cmd_run() {
     review_cost="$(extract_cost "$ndjson_tmp")"
     review_duration="$(extract_duration_ms "$ndjson_tmp")"
     review_text="$(extract_parseable_text "$ndjson_tmp")"
+    local review_claude_session_id
+    review_claude_session_id="$(extract_claude_session_id "$ndjson_tmp")"
     review_status="$(parse_kv_value "REVIEW_STATUS" "$ndjson_tmp")"
     must_fix_count="$(int_or_zero "$(parse_kv_value "MUST_FIX_COUNT" "$ndjson_tmp")")"
     should_fix_count="$(int_or_zero "$(parse_kv_value "SHOULD_FIX_COUNT" "$ndjson_tmp")")"
@@ -285,11 +322,12 @@ cmd_run() {
 
     local review_phase_status
     review_phase_status="${review_status:-unknown}; must_fix=${must_fix_count}; should_fix=${should_fix_count}"
-    _session_runlog_phase "$session_path" "$loop_index" "Review" "$review_phase_status" "$review_cost" "$review_duration" "$review_text"
+    _session_runlog_phase "$session_path" "$loop_index" "Review" "$review_phase_status" "$review_cost" "$review_duration" "$review_text" "$review_prompt_text" "$review_claude_session_id"
 
     if [[ "$review_has_blocked" == "true" ]]; then
       step_error "Review is BLOCKED"
-      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+      _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$((total_iterations_base + iterations_completed))"
+      session_clear_state
       return "$EXIT_BLOCKED"
     fi
 
@@ -332,6 +370,8 @@ cmd_run() {
       prompt_tmp=$(mktemp)
 
       write_fix_prompt "$spec_dir" "$review_findings" "$prompt_tmp"
+      local fix_prompt_text
+      fix_prompt_text="$(cat "$prompt_tmp")"
 
       if ! run_claude "$prompt_tmp" "$ndjson_tmp"; then
         rm -f "$prompt_tmp" "$ndjson_tmp" 2>/dev/null
@@ -342,6 +382,8 @@ cmd_run() {
       fix_cost="$(extract_cost "$ndjson_tmp")"
       fix_duration="$(extract_duration_ms "$ndjson_tmp")"
       fix_text="$(extract_parseable_text "$ndjson_tmp")"
+      local fix_claude_session_id
+      fix_claude_session_id="$(extract_claude_session_id "$ndjson_tmp")"
       total_cost=$(echo "$total_cost + $fix_cost" | bc 2>/dev/null || echo "$total_cost")
       fix_total_cost=$(echo "$fix_total_cost + $fix_cost" | bc 2>/dev/null || echo "$fix_total_cost")
 
@@ -350,11 +392,12 @@ cmd_run() {
 
       rm -f "$ndjson_tmp" "$prompt_tmp" 2>/dev/null
 
-      _session_runlog_phase "$session_path" "$loop_index" "Fix (attempt ${fix_try})" "applied" "$fix_cost" "$fix_duration" "$fix_text"
+      _session_runlog_phase "$session_path" "$loop_index" "Fix (attempt ${fix_try})" "applied" "$fix_cost" "$fix_duration" "$fix_text" "$fix_prompt_text" "$fix_claude_session_id"
 
       if [[ "$fix_has_blocked" == "true" ]]; then
         step_error "Fix build is BLOCKED"
-        _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+        _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$((total_iterations_base + iterations_completed))"
+        session_clear_state
         return "$EXIT_BLOCKED"
       fi
 
@@ -362,6 +405,8 @@ cmd_run() {
       ndjson_tmp=$(mktemp)
       prompt_tmp=$(mktemp)
       write_review_prompt "$spec_dir" "$prompt_tmp" "$before_sha"
+      local recheck_prompt_text
+      recheck_prompt_text="$(cat "$prompt_tmp")"
 
       if ! run_claude "$prompt_tmp" "$ndjson_tmp"; then
         rm -f "$prompt_tmp" "$ndjson_tmp" 2>/dev/null
@@ -372,6 +417,8 @@ cmd_run() {
       recheck_cost="$(extract_cost "$ndjson_tmp")"
       recheck_duration="$(extract_duration_ms "$ndjson_tmp")"
       recheck_text="$(extract_parseable_text "$ndjson_tmp")"
+      local recheck_claude_session_id
+      recheck_claude_session_id="$(extract_claude_session_id "$ndjson_tmp")"
       total_cost=$(echo "$total_cost + $recheck_cost" | bc 2>/dev/null || echo "$total_cost")
       fix_total_cost=$(echo "$fix_total_cost + $recheck_cost" | bc 2>/dev/null || echo "$fix_total_cost")
 
@@ -387,11 +434,12 @@ cmd_run() {
 
       local recheck_phase_status
       recheck_phase_status="${review_status:-unknown}; must_fix=${must_fix_count}; should_fix=${should_fix_count}"
-      _session_runlog_phase "$session_path" "$loop_index" "Review (recheck ${fix_try})" "$recheck_phase_status" "$recheck_cost" "$recheck_duration" "$recheck_text"
+      _session_runlog_phase "$session_path" "$loop_index" "Review (recheck ${fix_try})" "$recheck_phase_status" "$recheck_cost" "$recheck_duration" "$recheck_text" "$recheck_prompt_text" "$recheck_claude_session_id"
 
       if [[ "$recheck_has_blocked" == "true" ]]; then
         step_error "Review recheck is BLOCKED"
-        _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$iterations_completed"
+        _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "BLOCKED" "$((total_iterations_base + iterations_completed))"
+        session_clear_state
         return "$EXIT_BLOCKED"
       fi
 
@@ -438,11 +486,13 @@ cmd_run() {
   if [[ "$ONCE" == "true" ]]; then
     remaining_tasks="$(count_remaining_tasks "$spec_dir")"
     step_ok "${C_BOLD}Single cycle completed${C_RESET} ${C_DIM}(--once). ${remaining_tasks} tasks may remain.${C_RESET}"
-    _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "ONCE" "$iterations_completed"
+    _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "ONCE" "$((total_iterations_base + iterations_completed))"
+    session_clear_state
     return "$EXIT_OK"
   fi
 
-  _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "MAX_ITERATIONS" "$iterations_completed"
+  _session_json_finalize "$session_path" "$start_epoch" "$total_cost" "MAX_ITERATIONS" "$((total_iterations_base + iterations_completed))"
+  session_clear_state
   die "Reached max loops ($MAX_LOOPS) with pending tasks still present"
 }
 
@@ -483,9 +533,12 @@ _session_json_init() {
   local session_path="$1"
   local spec_dir="$2"
   local spec_name="$3"
+  local session_id
+  session_id="$(basename "$session_path")"
 
   cat > "${session_path}/session.json" <<EOF_JSON
 {
+  "session_id": "$session_id",
   "version": "$SPECLOOP_VERSION",
   "spec": "$spec_dir",
   "spec_name": "$spec_name",
@@ -539,6 +592,31 @@ _session_markdown_init() {
 EOF_MD
 }
 
+_session_runlog_invocation_header() {
+  local session_path="$1"
+  local resume_flag="$2"
+  local continuation_flag="$3"
+  local md_file="${session_path}/run.md"
+  local session_id
+  session_id="$(basename "$session_path")"
+  local mode="new"
+
+  if [[ "$resume_flag" == "true" ]]; then
+    mode="resume"
+  elif [[ "$continuation_flag" == "true" ]]; then
+    mode="continue"
+  fi
+
+  {
+    echo ""
+    echo "## Invocation — $(timestamp_human)"
+    echo "- Session ID: ${session_id}"
+    echo "- Mode: ${mode}"
+    echo "- Flags: once=${ONCE}, max_tasks=${MAX_TASKS_PER_RUN}, max_loops=${MAX_LOOPS}, skip_review=${SKIP_REVIEW}"
+    echo ""
+  } >> "$md_file"
+}
+
 _session_runlog_iteration_header() {
   local session_path="$1"
   local index="$2"
@@ -568,6 +646,8 @@ _session_runlog_phase() {
   local cost="$5"
   local duration_ms="$6"
   local output_text="$7"
+  local prompt_text="${8:-}"
+  local claude_session_id="${9:-}"
 
   local md_file="${session_path}/run.md"
   local dur_s=$((duration_ms / 1000))
@@ -581,7 +661,16 @@ _session_runlog_phase() {
     echo "- Status: ${status}"
     echo "- Duration: ${dur_str}"
     echo "- Cost: ${cost_str}"
+    if [[ -n "$claude_session_id" ]]; then
+      echo "- Claude Session: ${claude_session_id}"
+    fi
     echo ""
+    if [[ -n "$prompt_text" ]]; then
+      echo "#### Prompt"
+      echo ""
+      echo "$prompt_text"
+      echo ""
+    fi
     echo "#### Output"
     echo ""
     echo "$output_text"

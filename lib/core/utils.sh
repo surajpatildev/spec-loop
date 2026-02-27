@@ -66,6 +66,28 @@ timestamp_human() {
   date '+%Y-%m-%d %H:%M:%S'
 }
 
+iso_to_epoch() {
+  local iso="$1"
+  local parsed
+  parsed=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso" +%s 2>/dev/null || date -d "$iso" +%s 2>/dev/null || echo "")
+  if [[ "$parsed" =~ ^[0-9]+$ ]]; then
+    echo "$parsed"
+  else
+    date +%s
+  fi
+}
+
+slugify() {
+  local value="$1"
+  local slug
+  slug=$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | tr ' /' '--' | tr -cd '[:alnum:]_.-')
+  if [[ -n "$slug" ]]; then
+    echo "$slug"
+  else
+    echo "session"
+  fi
+}
+
 # Duration formatting: seconds → human-readable
 format_duration() {
   local seconds="$1"

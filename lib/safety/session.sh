@@ -58,3 +58,63 @@ session_latest() {
   latest=$(find "$SESSION_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r | head -1)
   echo "$latest"
 }
+
+session_latest_for_spec() {
+  local spec_dir="$1"
+  local dir
+  while IFS= read -r dir; do
+    [[ -n "$dir" ]] || continue
+    [[ -f "$dir/session.json" ]] || continue
+    local spec_val
+    spec_val=$(jq -r '.spec // ""' "$dir/session.json" 2>/dev/null || echo "")
+    if [[ "$spec_val" == "$spec_dir" ]]; then
+      echo "$dir"
+      return
+    fi
+  done < <(find "$SESSION_DIR" -mindepth 1 -maxdepth 1 -type d | sort -r)
+}
+
+session_continuation_for_spec() {
+  local spec_dir="$1"
+  local latest
+  latest=$(session_latest_for_spec "$spec_dir")
+  [[ -n "$latest" ]] || return 1
+
+  local reason
+  reason=$(jq -r '.exit_reason // ""' "$latest/session.json" 2>/dev/null || echo "")
+  case "$reason" in
+    ONCE|TASK_LIMIT)
+      echo "$latest"
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+session_iterations_count() {
+  local session_path="$1"
+  jq -r '(.iterations | length) // 0' "$session_path/session.json" 2>/dev/null || echo "0"
+}
+
+session_total_iterations() {
+  local session_path="$1"
+  jq -r '.total_iterations // ((.iterations | length) // 0)' "$session_path/session.json" 2>/dev/null || echo "0"
+}
+
+session_total_cost() {
+  local session_path="$1"
+  jq -r '.total_cost_usd // 0' "$session_path/session.json" 2>/dev/null || echo "0"
+}
+
+session_started_epoch() {
+  local session_path="$1"
+  local started
+  started=$(jq -r '.started_at // ""' "$session_path/session.json" 2>/dev/null || echo "")
+  if [[ -n "$started" ]]; then
+    iso_to_epoch "$started"
+  else
+    date +%s
+  fi
+}

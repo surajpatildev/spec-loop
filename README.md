@@ -153,13 +153,15 @@ your-project/
 Each run creates minimal, readable logs:
 
 ```
-.spec-loop/sessions/20260227_143022/
+.spec-loop/sessions/20260227_143022_<spec-name>/
 ├── session.json     # Machine-readable analytics (cost, duration, exit reason)
 ├── session.md       # Iteration summaries
 └── run.md           # Full run log (build/review/fix outputs by iteration)
 ```
 
-`run.md` contains the full Claude response text organized by phase (Build, Review, Fix), while `session.json` keeps high-level telemetry.
+`run.md` contains per-invocation and per-phase logs with both prompt and model output (plus Claude session IDs), while `session.json` keeps high-level telemetry.
+
+When a run ends via `--once` or `--max-tasks`, the next invocation for the same spec continues the same session directory so logs stay in one place.
 
 ## Safety
 

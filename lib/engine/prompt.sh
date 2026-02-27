@@ -17,7 +17,10 @@ write_build_prompt() {
 
   local agents_context=""
   if [[ -f "AGENTS.md" ]]; then
-    agents_context="\n## Project Rules\n\nRead and follow AGENTS.md in the project root."
+    agents_context="
+## Project Rules
+
+Read and follow AGENTS.md in the project root."
   fi
 
   cat > "$prompt_path" <<PROMPT

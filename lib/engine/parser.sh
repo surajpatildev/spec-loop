@@ -95,3 +95,11 @@ extract_duration_ms() {
     echo "0"
   fi
 }
+
+extract_claude_session_id() {
+  local file="$1"
+
+  [[ -s "$file" ]] || { echo ""; return; }
+
+  jq -r 'select(.type == "system" and .subtype == "init") | .session_id // empty' "$file" 2>/dev/null | tail -1 || true
+}
