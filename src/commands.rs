@@ -26,8 +26,8 @@ use crate::session::{
 };
 use crate::spec::{
     count_active, count_remaining, count_status, count_total, find_next_task, find_open_task,
-    get_spec_name, get_task_name, list_spec_dirs, resolve_spec_dir, set_task_status,
-    status_signature, TaskStatus,
+    get_spec_name, get_task_name, get_task_status, list_spec_dirs, resolve_spec_dir,
+    set_task_status, status_signature, TaskStatus,
 };
 use crate::ui::Ui;
 use crate::util::{
@@ -370,6 +370,10 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             .as_ref()
             .map(|p| get_task_name(p))
             .unwrap_or_default();
+        let next_task_status = next_task_file
+            .as_ref()
+            .map(|p| get_task_status(p))
+            .unwrap_or(TaskStatus::Unknown);
 
         if next_task_name.is_empty() {
             ui.separator(
@@ -412,19 +416,34 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
         let mut review_status: String;
         let mut review_findings: String;
 
-        if resume_phase == "review" || resume_phase == "fix" {
+        if resume_phase == "review"
+            || resume_phase == "fix"
+            || next_task_status == TaskStatus::InReview
+        {
             ui.step_info(&format!(
                 "Skipping build (already completed, resuming at {})",
-                resume_phase
+                if next_task_status == TaskStatus::InReview {
+                    "review"
+                } else {
+                    &resume_phase
+                }
             ));
-            before_sha = resume_before_sha.clone();
+            before_sha = if next_task_status == TaskStatus::InReview {
+                String::new()
+            } else {
+                resume_before_sha.clone()
+            };
             after_build_sha = head_sha();
             save_resume_state(
                 &cfg,
                 &spec_dir,
                 loop_index,
                 &session_path,
-                &resume_phase,
+                if next_task_status == TaskStatus::InReview {
+                    "review"
+                } else {
+                    &resume_phase
+                },
                 &before_sha,
             )?;
         } else {
@@ -714,16 +733,17 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             return Ok(EXIT_BLOCKED);
         }
 
-        let needs_fix = review_status == "FAIL" || must_fix_count > 0 || should_fix_count > 0;
+        let needs_fix = review_status == "FAIL" || must_fix_count > 0;
         if !needs_fix {
             if let Some(task_file) = &next_task_file {
                 let _ = set_task_status(task_file, TaskStatus::Done);
             }
 
             ui.step_ok(&format!(
-                "PASS  {}0 must-fix {} 0 should-fix",
+                "PASS  {}0 must-fix {} {} should-fix (non-blocking)",
                 ui.dim(""),
-                ui.diamond()
+                ui.diamond(),
+                should_fix_count
             ));
 
             let remaining = count_remaining(&spec_dir);
@@ -866,7 +886,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
                 return Ok(EXIT_BLOCKED);
             }
 
-            if review_status == "PASS" && must_fix_count == 0 && should_fix_count == 0 {
+            if review_status != "FAIL" && must_fix_count == 0 {
                 ui.step_ok(&format!("PASS after fix attempt {}", fix_try));
                 fix_passed = true;
                 break;
@@ -882,10 +902,34 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
         }
 
         if !fix_passed {
-            bail!(
-                "Review still failing after {} fix attempts",
+            ui.step_warn(&format!(
+                "Review still failing after {} fix attempts; leaving task in-review and continuing",
                 cfg.max_review_fix_loops
-            );
+            ));
+            if let Some(task_file) = &next_task_file {
+                let _ = set_task_status(task_file, TaskStatus::InReview);
+            }
+            cb.record(
+                has_spec_progress(&spec_dir, remaining_before, &signature_before),
+                cfg.cb_no_progress_threshold,
+                ui,
+            )?;
+            append_iteration_log(
+                &session_path,
+                IterationLogInput {
+                    index: loop_index,
+                    task_name: &next_task_name,
+                    outcome: "review-failed",
+                    duration_seconds: iteration_start.elapsed().as_secs(),
+                    cost_usd: build_cost + review_cost + fix_total_cost,
+                    must_fix_count,
+                    should_fix_count,
+                    commit_sha: &head_sha(),
+                },
+            )?;
+            iterations_completed += 1;
+            loop_index += 1;
+            continue;
         }
 
         if let Some(task_file) = &next_task_file {

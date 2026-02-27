@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::config::Config;
@@ -60,14 +61,21 @@ pub fn run_claude(
     let reader = BufReader::new(stdout);
     let mut lines = Vec::new();
     let mut stream_tools = 0_u32;
+    let cwd = std::env::current_dir().ok();
+    let mut last_bash_tool_id = String::new();
 
     for line in reader.lines() {
         let line = line.context("failed to read claude stream")?;
         if line.trim().is_empty() {
             continue;
         }
-        stream_tools =
-            stream_tools.saturating_add(render_stream_event(&line, verbose, stream_tools));
+        stream_tools = stream_tools.saturating_add(render_stream_event(
+            &line,
+            verbose,
+            stream_tools,
+            &mut last_bash_tool_id,
+            cwd.as_deref(),
+        ));
         lines.push(line);
     }
 
@@ -79,7 +87,13 @@ pub fn run_claude(
     Ok(parse_stream(&lines))
 }
 
-fn render_stream_event(line: &str, verbose: bool, current_tool_count: u32) -> u32 {
+fn render_stream_event(
+    line: &str,
+    verbose: bool,
+    current_tool_count: u32,
+    last_bash_tool_id: &mut String,
+    cwd: Option<&Path>,
+) -> u32 {
     let Ok(v) = serde_json::from_str::<Value>(line) else {
         if verbose {
             println!("      → non-json: {}", trim_single_line(line, 100));
@@ -112,6 +126,11 @@ fn render_stream_event(line: &str, verbose: bool, current_tool_count: u32) -> u3
                 let ctype = content.get("type").and_then(Value::as_str).unwrap_or("");
                 match ctype {
                     "tool_use" => {
+                        let tool_id = content
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
                         let tool_name = content
                             .get("name")
                             .and_then(Value::as_str)
@@ -129,10 +148,18 @@ fn render_stream_event(line: &str, verbose: bool, current_tool_count: u32) -> u3
                             })
                             .and_then(Value::as_str)
                             .unwrap_or("");
+                        let cmd = compact_path(cmd, cwd);
+
+                        if tool_name == "Bash" {
+                            *last_bash_tool_id = tool_id;
+                        } else {
+                            last_bash_tool_id.clear();
+                        }
+
                         if cmd.is_empty() {
                             println!("      → {}", tool_name);
                         } else {
-                            println!("      → {:<8} {}", tool_name, trim_single_line(cmd, 80));
+                            println!("      → {:<8} {}", tool_name, trim_single_line(&cmd, 80));
                         }
                         1
                     }
@@ -163,13 +190,25 @@ fn render_stream_event(line: &str, verbose: bool, current_tool_count: u32) -> u3
                 .and_then(|arr| arr.first())
             {
                 if content.get("type").and_then(Value::as_str) == Some("tool_result") {
+                    let tool_use_id = content
+                        .get("tool_use_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
                     let is_error = content
                         .get("is_error")
                         .and_then(Value::as_bool)
                         .unwrap_or(false);
                     if is_error {
-                        let msg = content.get("content").and_then(Value::as_str).unwrap_or("");
+                        let msg = extract_tool_result_text(content.get("content"));
                         println!("      → error: {}", trim_single_line(msg, 100));
+                    } else if !last_bash_tool_id.is_empty() && tool_use_id == last_bash_tool_id {
+                        let msg = extract_tool_result_text(content.get("content"));
+                        if msg.trim().is_empty() {
+                            println!("      → done");
+                        } else {
+                            println!("      → {}", trim_single_line(msg, 100));
+                        }
+                        last_bash_tool_id.clear();
                     }
                 }
             }
@@ -222,6 +261,25 @@ fn trim_single_line(input: &str, max_len: usize) -> String {
     } else {
         trimmed
     }
+}
+
+fn compact_path(input: &str, cwd: Option<&Path>) -> String {
+    let mut out = input.to_string();
+    if let Some(cwd) = cwd {
+        let cwd_str = cwd.to_string_lossy();
+        let prefix = format!("{}/", cwd_str);
+        if out.contains(&prefix) {
+            out = out.replace(&prefix, "");
+        }
+    }
+    out
+}
+
+fn extract_tool_result_text(content: Option<&Value>) -> &str {
+    if let Some(Value::String(s)) = content {
+        return s;
+    }
+    ""
 }
 
 fn parse_stream(lines: &[String]) -> ClaudeResult {
