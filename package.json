@@ -24,6 +24,7 @@
     "bin/",
     "src/",
     "Cargo.toml",
+    "Cargo.lock",
     ".agents/",
     "install.sh",
     "uninstall.sh",

@@ -5,9 +5,10 @@
 ```bash
 git clone https://github.com/specloop/spec-loop.git
 cd spec-loop
+cargo check
 ```
 
-The CLI is pure bash — no build step. Run directly:
+Run the CLI from repo root:
 
 ```bash
 ./bin/spec-loop version
@@ -22,37 +23,22 @@ Test in a temp directory:
 mkdir /tmp/test-project && cd /tmp/test-project
 git init
 /path/to/spec-loop/bin/spec-loop init --no-wizard
-/path/to/spec-loop/bin/spec-loop run --dry-run --once
+CLAUDE_BIN=true /path/to/spec-loop/bin/spec-loop run --dry-run --once
 ```
 
 ## Project Structure
 
 ```
-bin/spec-loop          Entry point — sources lib, dispatches commands
-lib/
-├── core/              Constants, logging, args, config, utils
-├── engine/            Runner, stream parser, prompts, output parser, main loop
-├── safety/            Circuit breaker, rate limiter, session management
-├── tasks/             Spec resolution, task state
-├── setup/             Init wizard, preflight checks
-└── ui/                Terminal detection, spinner, preview, status display
+bin/spec-loop          Rust CLI launcher
+src/                   Rust runtime (commands, engine, session/logging, prompts)
 .agents/
-├── skills/            4 SKILL.md files (spec, build, review, status)
+├── skills/            Namespaced skills (spec-loop-spec, spec-loop-status)
 └── templates/         Spec and task templates
 ```
 
-## Conventions
-
-- Shell scripts use `set -euo pipefail`
-- Functions are lowercase with underscores
-- Private functions prefixed with `_`
-- Colors via `$C_*` variables, symbols via `$SYM_*`
-- All output indented with 2+ spaces for the charm.sh aesthetic
-- No `mapfile` (macOS bash 3.x compatibility)
-
 ## Pull Requests
 
-1. Fork and create a feature branch
-2. Test with `--dry-run` in a real project
-3. Verify macOS + Linux compatibility (bash 3.2+)
-4. Submit PR with description of changes
+1. Create a feature branch
+2. Run `cargo check` and `cargo test`
+3. Smoke test with `--dry-run` in a real git project
+4. Submit PR with a clear summary

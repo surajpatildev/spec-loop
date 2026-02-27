@@ -63,6 +63,11 @@ npm install -g @specloop/cli
 
 `spec-loop` will compile and run the Rust engine via `cargo` when needed.
 
+CLI install target:
+
+- binary: `~/.local/bin/spec-loop`
+- runtime: native Rust binary (`target/release/spec-loop` during local dev)
+
 ## Quick Start
 
 ```bash
@@ -168,7 +173,6 @@ When a run ends via `--once` or `--max-tasks`, the next invocation for the same 
 ## Safety
 
 - **Circuit breaker** — Stops after N iterations without git commits (stagnation detection)
-- **Rate limiter** — Backs off when Claude Code rate limits are hit
 - **Session resume** — `--resume` picks up where the last run stopped
 - **Dry run** — `--dry-run` to preview without calling Claude Code
 
