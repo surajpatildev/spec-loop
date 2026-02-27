@@ -5,7 +5,7 @@
 Initial release.
 
 - Spec-driven build→review→fix loop
-- 4 generalized skills: spec, build, review, status
+- Namespaced skills for loop workflow: spec-loop-spec, spec-loop-status
 - Claude Code stream-json integration
 - Circuit breaker and rate limiter
 - Charm.sh-inspired terminal UX

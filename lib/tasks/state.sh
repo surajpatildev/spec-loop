@@ -39,3 +39,25 @@ find_next_task() {
     fi
   done < <(list_task_files "$spec_dir")
 }
+
+find_open_task() {
+  local spec_dir="$1"
+  local file
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    local status
+    status=$(get_task_status "$file")
+    if [[ "$status" == "pending" || "$status" == "in-progress" || "$status" == "in-review" ]]; then
+      echo "$file"
+      return
+    fi
+  done < <(list_task_files "$spec_dir")
+}
+
+set_task_status() {
+  local task_file="$1"
+  local new_status="$2"
+
+  [[ -f "$task_file" ]] || return 1
+  sed -i.bak "s/^> Status: .*/> Status: ${new_status}/" "$task_file" && rm -f "${task_file}.bak"
+}

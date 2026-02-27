@@ -1,9 +1,9 @@
 ---
-name: spec
-description: Create a feature spec with individual task files. Use for features that benefit from structured planning (4+ files or unclear scope).
+name: spec-loop-spec
+description: Create a feature spec for spec-loop with individual task files. Use for features that benefit from structured planning (4+ files or unclear scope).
 ---
 
-# Spec
+# Spec-Loop Spec
 
 Create a feature specification with individual task files. One skill for all planning — size-aware, so a 2-task feature gets minimal files while a 10-task feature gets full detail.
 
@@ -90,6 +90,8 @@ For each task in the index, create `tasks/NN-verb-noun.md` (from template if ava
 - Complex task (L): How section has a code sketch and edge case notes
 
 **Specificity test:** For each task file, ask: "Could a fresh agent execute this task without asking clarifying questions?" If not, add detail.
+
+**Task lifecycle requirement:** task status must follow `pending -> in-progress -> in-review -> done` so review completion, not build completion, controls final task completion.
 
 ### 7. Initialize progress.md
 

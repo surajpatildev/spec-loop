@@ -11,7 +11,7 @@ count_active_tasks() {
   shopt -u nullglob
   [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
 
-  awk '/^> Status: pending$|^> Status: in-progress$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
+  awk '/^> Status: pending$|^> Status: in-progress$|^> Status: in-review$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
 count_pending_tasks() {
@@ -25,6 +25,19 @@ count_pending_tasks() {
   [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
 
   awk '/^> Status: pending$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
+}
+
+count_remaining_tasks() {
+  local spec_dir="$1"
+  [[ -d "$spec_dir/tasks" ]] || { echo "0"; return; }
+
+  local -a task_files=()
+  shopt -s nullglob
+  task_files=("$spec_dir"/tasks/*.md)
+  shopt -u nullglob
+  [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
+
+  awk '/^> Status:/ { if ($0 !~ /^> Status: done$/) count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
 count_done_tasks() {
@@ -76,7 +89,7 @@ resolve_spec_dir() {
   done
 
   if [[ ${#active_specs[@]} -eq 0 ]]; then
-    die "No active specs found (no pending/in-progress tasks)"
+    die "No active specs found (no pending/in-progress/in-review tasks)"
   fi
 
   if [[ ${#active_specs[@]} -gt 1 ]]; then

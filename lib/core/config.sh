@@ -23,6 +23,7 @@ load_config() {
   # CLI flags have highest priority: CLI > env > .speclooprc > defaults.
   local cli_max_loops="$MAX_LOOPS"
   local cli_max_review_fix_loops="$MAX_REVIEW_FIX_LOOPS"
+  local cli_max_tasks_per_run="$MAX_TASKS_PER_RUN"
   local cli_spec_arg="${SPEC_ARG:-}"
 
   if [[ -f "$SPECLOOPRC" ]]; then
@@ -34,6 +35,7 @@ load_config() {
   # Environment overrides (over config file)
   [[ -n "${SPECLOOP_MAX_LOOPS:-}" ]] && MAX_LOOPS="$SPECLOOP_MAX_LOOPS"
   [[ -n "${SPECLOOP_MAX_REVIEW_FIX_LOOPS:-}" ]] && MAX_REVIEW_FIX_LOOPS="$SPECLOOP_MAX_REVIEW_FIX_LOOPS"
+  [[ -n "${SPECLOOP_MAX_TASKS_PER_RUN:-}" ]] && MAX_TASKS_PER_RUN="$SPECLOOP_MAX_TASKS_PER_RUN"
   [[ -n "${SPECLOOP_SPECS_DIR:-}" ]] && SPECS_DIR="$SPECLOOP_SPECS_DIR"
   [[ -n "${SPECLOOP_SESSION_DIR:-}" ]] && SESSION_DIR="$SPECLOOP_SESSION_DIR"
 
@@ -44,10 +46,14 @@ load_config() {
   if [[ "$cli_max_review_fix_loops" != "$DEFAULT_MAX_REVIEW_FIX_LOOPS" ]]; then
     MAX_REVIEW_FIX_LOOPS="$cli_max_review_fix_loops"
   fi
+  if [[ "$cli_max_tasks_per_run" != "$DEFAULT_MAX_TASKS_PER_RUN" ]]; then
+    MAX_TASKS_PER_RUN="$cli_max_tasks_per_run"
+  fi
 
   # Apply --once override (always wins)
   if [[ "$ONCE" == "true" ]]; then
     MAX_LOOPS=1
+    MAX_TASKS_PER_RUN=1
   fi
 }
 

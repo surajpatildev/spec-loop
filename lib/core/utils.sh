@@ -32,6 +32,12 @@ require_positive_int() {
   [[ "$value" =~ ^[1-9][0-9]*$ ]] || die "$name must be a positive integer (got: $value)"
 }
 
+require_non_negative_int() {
+  local name="$1"
+  local value="$2"
+  [[ "$value" =~ ^[0-9]+$ ]] || die "$name must be a non-negative integer (got: $value)"
+}
+
 is_git_repo() {
   git rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
@@ -42,6 +48,10 @@ get_project_root() {
 
 get_current_branch() {
   git branch --show-current 2>/dev/null || echo "unknown"
+}
+
+get_head_sha() {
+  git rev-parse --verify HEAD 2>/dev/null || echo ""
 }
 
 timestamp() {

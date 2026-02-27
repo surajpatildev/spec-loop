@@ -22,16 +22,16 @@ cmd_status() {
 
   if [[ ${#all_specs[@]} -eq 0 ]]; then
     echo ""
-    step_info "No specs found. Use /spec to create a feature spec."
+    step_info "No specs found. Use /spec-loop-spec to create a feature spec."
     return
   fi
 
   for spec_dir in "${all_specs[@]}"; do
-    local name total done_count pending active_count
+    local name total done_count remaining active_count
     name=$(basename "$spec_dir")
     total=$(count_total_tasks "$spec_dir")
     done_count=$(count_done_tasks "$spec_dir")
-    pending=$(count_pending_tasks "$spec_dir")
+    remaining=$(count_remaining_tasks "$spec_dir")
     active_count=$(count_active_tasks "$spec_dir")
 
     if [[ "$active_count" -gt 0 ]]; then
@@ -39,7 +39,7 @@ cmd_status() {
       echo ""
       box_header "$name" 52
       box_empty
-      box_line "  $(progress_bar "$done_count" "$total" 16 "done") ${SYM_DIAMOND} ${pending} pending"
+      box_line "  $(progress_bar "$done_count" "$total" 16 "done") ${SYM_DIAMOND} ${remaining} remaining"
 
       # Show current branch
       local branch
@@ -72,7 +72,7 @@ cmd_status() {
   if [[ "$found_active" == "false" ]]; then
     echo ""
     step_info "No active specs (all tasks done or none created)."
-    step_info "Use /spec to create a new feature spec."
+    step_info "Use /spec-loop-spec to create a new feature spec."
   fi
 
   echo ""

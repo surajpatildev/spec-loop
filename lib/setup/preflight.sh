@@ -20,6 +20,7 @@ preflight() {
   # Validate numeric config
   require_positive_int "MAX_LOOPS" "$MAX_LOOPS"
   require_positive_int "MAX_REVIEW_FIX_LOOPS" "$MAX_REVIEW_FIX_LOOPS"
+  require_non_negative_int "MAX_TASKS_PER_RUN" "$MAX_TASKS_PER_RUN"
 
   # Session directory
   mkdir -p "$SESSION_DIR"

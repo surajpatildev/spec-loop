@@ -12,7 +12,7 @@ extract_parseable_text() {
   if command -v jq >/dev/null 2>&1; then
     # First try: extract from the result event (authoritative, non-duplicated)
     local result_text
-    result_text=$(jq -r 'select(.type == "result") | .result // empty' "$file" 2>/dev/null | head -1)
+    result_text=$(jq -rs '[ .[] | select(.type == "result") | .result ] | last // empty' "$file" 2>/dev/null)
 
     if [[ -n "$result_text" ]]; then
       printf '%s\n' "$result_text"
@@ -34,13 +34,25 @@ extract_parseable_text() {
 }
 
 # Parse a key-value line from output: "KEY: value"
+# Searches for KEY: anywhere in the line (handles leading whitespace, backticks, etc.)
 parse_kv_value() {
   local key="$1"
   local file="$2"
 
   [[ -s "$file" ]] || { echo ""; return; }
 
-  extract_parseable_text "$file" | awk -v prefix="$key: " 'index($0, prefix) == 1 && !found { value = substr($0, length(prefix) + 1); found=1 } END { print value }'
+  # First try: exact match at line start (fastest, most precise)
+  local result
+  result=$(extract_parseable_text "$file" | awk -v prefix="$key: " 'index($0, prefix) == 1 && !found { value = substr($0, length(prefix) + 1); found=1 } END { print value }')
+
+  if [[ -n "$result" ]]; then
+    echo "$result"
+    return
+  fi
+
+  # Fallback: find KEY: anywhere in the line (handles whitespace, code blocks, etc.)
+  result=$(extract_parseable_text "$file" | grep -o "${key}: [A-Z_0-9]*" | head -1 | sed "s/^${key}: //")
+  echo "${result:-}"
 }
 
 # Check if output contains a <promise>TAG</promise>
@@ -50,7 +62,8 @@ output_has_tag() {
 
   [[ -s "$file" ]] || return 1
 
-  extract_parseable_text "$file" | grep -q "^<promise>${tag}</promise>$"
+  # Search for the tag anywhere in the line (handles whitespace/backticks)
+  extract_parseable_text "$file" | grep -q "<promise>${tag}</promise>"
 }
 
 # Extract cost from result event
@@ -61,7 +74,11 @@ extract_cost() {
 
   local raw
   raw=$(jq -r 'select(.type == "result") | .total_cost_usd // 0' "$file" 2>/dev/null | tail -1)
-  echo "${raw:-0}"
+  if [[ "$raw" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "$raw"
+  else
+    echo "0"
+  fi
 }
 
 # Extract duration from result event (ms)
@@ -70,5 +87,11 @@ extract_duration_ms() {
 
   [[ -s "$file" ]] || { echo "0"; return; }
 
-  jq -r 'select(.type == "result") | .duration_ms // 0' "$file" 2>/dev/null | tail -1 || echo "0"
+  local raw
+  raw=$(jq -r 'select(.type == "result") | .duration_ms // 0' "$file" 2>/dev/null | tail -1)
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    echo "$raw"
+  else
+    echo "0"
+  fi
 }

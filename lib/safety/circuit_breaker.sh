@@ -24,7 +24,7 @@ cb_init() {
 
   # Initialize CB_LAST_COMMIT to current HEAD if not set
   if [[ -z "$CB_LAST_COMMIT" ]]; then
-    CB_LAST_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+    CB_LAST_COMMIT=$(get_head_sha)
   fi
 }
 
@@ -91,7 +91,7 @@ cb_record() {
     CB_FAILURES=0
     CB_STATE="CLOSED"
     # Update last known commit
-    CB_LAST_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+    CB_LAST_COMMIT=$(get_head_sha)
   else
     CB_FAILURES=$((CB_FAILURES + 1))
 

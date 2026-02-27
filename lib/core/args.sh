@@ -5,6 +5,7 @@
 SPEC_ARG=""
 MAX_LOOPS="$DEFAULT_MAX_LOOPS"
 MAX_REVIEW_FIX_LOOPS="$DEFAULT_MAX_REVIEW_FIX_LOOPS"
+MAX_TASKS_PER_RUN="$DEFAULT_MAX_TASKS_PER_RUN"
 ONCE="false"
 DRY_RUN="false"
 SKIP_REVIEW="false"
@@ -46,6 +47,7 @@ usage_run() {
     --spec <path>              Spec directory (auto-detects if one active)
     --max-loops <n>            Max task iterations (default: 25)
     --max-review-fix-loops <n> Review-fix retries per task (default: 3)
+    --max-tasks <n>            Max tasks to complete in this run (default: unlimited)
     --once                     Single build+review cycle
     --dry-run                  Print commands without executing
     --skip-review              Build only, no review phase
@@ -56,6 +58,7 @@ usage_run() {
   Environment:
     CLAUDE_BIN                 Claude Code binary (default: claude)
     CLAUDE_EXTRA_ARGS          Extra args for the claude command
+    SPECLOOP_MAX_TASKS_PER_RUN Override max tasks per run
 
 EOF
 }
@@ -87,6 +90,9 @@ parse_run_args() {
       --max-review-fix-loops)
         [[ $# -ge 2 ]] || die "--max-review-fix-loops requires a value"
         MAX_REVIEW_FIX_LOOPS="$2"; shift 2 ;;
+      --max-tasks)
+        [[ $# -ge 2 ]] || die "--max-tasks requires a value"
+        MAX_TASKS_PER_RUN="$2"; shift 2 ;;
       --once)
         ONCE="true"; shift ;;
       --dry-run)

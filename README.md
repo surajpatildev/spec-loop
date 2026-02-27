@@ -10,7 +10,7 @@ spec-loop v0.1.0
 ╭─ Spec ──────────────────────────────────────────╮
 │                                                  │
 │  user-auth                                       │
-│  ████████░░░░░░░░ 3/7 done ◆ 4 pending           │
+│  ████████░░░░░░░░ 3/7 done ◆ 4 remaining         │
 │  feat/user-auth                                  │
 │                                                  │
 ╰──────────────────────────────────────────────────╯
@@ -31,9 +31,9 @@ spec-loop v0.1.0
 
 ## How It Works
 
-1. **`/spec`** — Create a feature spec with individual task files
+1. **`/spec-loop-spec`** — Create a feature spec with individual task files
 2. **`spec-loop run`** — For each task: build → review → fix → commit
-3. **`/status`** — Check progress at any time
+3. **`/spec-loop-status`** — Check progress at any time
 
 The loop continues until all tasks are done, a task is blocked, or the circuit breaker trips (stagnation detection).
 
@@ -45,11 +45,9 @@ The loop continues until all tasks are done, a task is blocked, or the circuit b
 npx skills add specloop/spec-loop
 ```
 
-Installs 4 skills to `~/.agents/skills/` with symlinks to `~/.claude/skills/`:
-- `/spec` — Create feature specs
-- `/build` — Implement code with quality gates
-- `/review` — Review changes against AGENTS.md rules
-- `/status` — Show progress
+Installs namespaced skills to `~/.agents/skills/` with symlinks to `~/.claude/skills/`:
+- `/spec-loop-spec` — Create feature specs for spec-loop
+- `/spec-loop-status` — Show spec-loop progress
 
 ### CLI (the automation loop)
 
@@ -73,7 +71,7 @@ spec-loop init
 #    (architecture, naming conventions, review checklist)
 
 # 3. Create a spec (in Claude Code)
-/spec Add user authentication with JWT tokens
+/spec-loop-spec Add user authentication with JWT tokens
 
 # 4. Run the loop
 spec-loop run
@@ -96,6 +94,7 @@ spec-loop help                    Show help
 | `--spec <path>` | Spec directory | auto-detect |
 | `--max-loops <n>` | Max iterations | 25 |
 | `--max-review-fix-loops <n>` | Review-fix retries per task | 3 |
+| `--max-tasks <n>` | Max tasks to complete in one run | unlimited |
 | `--once` | Single build+review cycle | — |
 | `--dry-run` | Print commands, don't execute | — |
 | `--skip-review` | Build only, no review | — |
@@ -129,6 +128,7 @@ TEST_COMMAND="npm test"
 | `CLAUDE_BIN` | Claude Code binary (default: `claude`) |
 | `CLAUDE_EXTRA_ARGS` | Extra args for claude command |
 | `SPECLOOP_MAX_LOOPS` | Override max loops |
+| `SPECLOOP_MAX_TASKS_PER_RUN` | Override max tasks per run |
 | `SPECLOOP_SPECS_DIR` | Override specs directory |
 
 ## Project Structure
@@ -139,7 +139,7 @@ After `spec-loop init`:
 your-project/
 ├── .speclooprc              # Project config
 ├── .agents/
-│   ├── specs/               # Feature specs (created via /spec)
+│   ├── specs/               # Feature specs (created via /spec-loop-spec)
 │   ├── templates/           # Spec/task templates (customizable)
 │   ├── reference/           # Project patterns (you fill this)
 │   └── decisions.md         # Design decisions log
@@ -155,12 +155,11 @@ Each run creates minimal, readable logs:
 ```
 .spec-loop/sessions/20260227_143022/
 ├── session.json     # Machine-readable analytics (cost, duration, exit reason)
-├── session.md       # Human-readable summary (one entry per iteration)
-├── 01.md            # Iteration 1 — build output, review output
-└── 02.md            # Iteration 2 — build, review, fix, recheck (if needed)
+├── session.md       # Iteration summaries
+└── run.md           # Full run log (build/review/fix outputs by iteration)
 ```
 
-Each iteration `.md` contains the full Claude response text organized by phase (Build, Review, Fix). No raw NDJSON logs or separate prompt files — just clean, readable output.
+`run.md` contains the full Claude response text organized by phase (Build, Review, Fix), while `session.json` keeps high-level telemetry.
 
 ## Safety
 

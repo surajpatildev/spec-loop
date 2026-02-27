@@ -53,9 +53,13 @@ run_claude() {
   stderr_file=$(mktemp)
 
   set +e
-  "${cmd[@]}" < "$prompt_file" 2>"$stderr_file" | tee "$output_file" | while IFS= read -r line; do
-    process_stream_event "$line"
-  done
+  "${cmd[@]}" < "$prompt_file" 2>"$stderr_file" | tee "$output_file" | {
+    while IFS= read -r line; do
+      process_stream_event "$line"
+    done
+    # Ensure spinner is cleaned up when pipe ends
+    _stream_spinner_stop 2>/dev/null
+  }
   local status=${PIPESTATUS[0]}
   set -e
 
@@ -76,14 +80,14 @@ _dry_run_output() {
   local prompt_file="$1"
   local output_file="$2"
 
-  if grep -q 'REVIEW_INSTRUCTIONS' "$prompt_file" 2>/dev/null; then
+  if grep -q 'REVIEW_STATUS:' "$prompt_file" 2>/dev/null; then
     cat > "$output_file" <<'EOF'
 REVIEW_STATUS: PASS
 MUST_FIX_COUNT: 0
 SHOULD_FIX_COUNT: 0
 SUGGESTION_COUNT: 0
 EOF
-  elif grep -q 'Fix all must-fix' "$prompt_file" 2>/dev/null; then
+  elif grep -q 'BUILD_STATUS: FIXES_APPLIED' "$prompt_file" 2>/dev/null; then
     cat > "$output_file" <<'EOF'
 BUILD_STATUS: FIXES_APPLIED
 EOF

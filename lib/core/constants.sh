@@ -13,6 +13,7 @@ EXIT_ERROR=4
 # ── Defaults ────────────────────────────────────────
 DEFAULT_MAX_LOOPS=25
 DEFAULT_MAX_REVIEW_FIX_LOOPS=3
+DEFAULT_MAX_TASKS_PER_RUN=0
 DEFAULT_CLAUDE_BIN="claude"
 DEFAULT_SPECS_DIR=".agents/specs"
 DEFAULT_SESSION_DIR=".spec-loop/sessions"

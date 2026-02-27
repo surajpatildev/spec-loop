@@ -1,9 +1,9 @@
 ---
-name: status
-description: Show current progress and orientation. Use after compaction, new session, or to check where things stand.
+name: spec-loop-status
+description: Show spec-loop progress and orientation. Use after compaction, new session, or to check where things stand.
 ---
 
-# Status
+# Spec-Loop Status
 
 Quick orientation. Answers: "Where are we?" Reads state from files — works after compaction, new sessions, or when picking up someone else's work.
 
@@ -11,11 +11,11 @@ Quick orientation. Answers: "Where are we?" Reads state from files — works aft
 
 ### 1. Check for Active Specs
 
-Look in `.agents/specs/` for directories containing task files with `Status: pending` or `Status: in-progress`.
+Look in `.agents/specs/` for directories containing task files with `Status: pending`, `Status: in-progress`, or `Status: in-review`.
 
 ### 2. For Each Active Spec
 
-- Read all task files → count by status (done / in-progress / pending / blocked)
+- Read all task files -> count by status (done / in-review / in-progress / pending / blocked)
 - Identify next eligible task (pending, deps met)
 - If `progress.md` exists, read the last 3 log entries
 
@@ -29,7 +29,7 @@ Look in `.agents/specs/` for directories containing task files with `Status: pen
 ```
 ## Active: <spec-name>
 Branch: <current branch name>
-Tasks: N/M done | N in-progress | N pending | N blocked
+Tasks: N/M done | N in-review | N in-progress | N pending | N blocked
 Next: Task N — <name> (depends on: N, N)
 
 ### Recent Progress
@@ -43,7 +43,7 @@ def5678 <message>
 If no active specs, report:
 ```
 No active specs. Recent commits shown below.
-Use `/spec` to create a new feature spec, or run `spec-loop run` for standalone work.
+Use `/spec-loop-spec` to create a new feature spec, or run `spec-loop run` for standalone work.
 ```
 
 ## Rules

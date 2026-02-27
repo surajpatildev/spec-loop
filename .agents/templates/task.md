@@ -1,7 +1,7 @@
 # Task N: [Short Name]
 
 > Spec: ../spec.md
-> Status: pending | in-progress | done | blocked
+> Status: pending | in-progress | in-review | done | blocked
 > Size: S | M | L
 > Depends on: [task numbers or "none"]
 

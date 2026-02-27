@@ -115,18 +115,20 @@ progress_bar() {
 
 # ── Phase output ────────────────────────────────────
 
-# Phase start: ● build [0s]
+# Phase start: ● build
 phase() {
   local label="$1"
-  # Stop any existing phase timer before printing
+  # Stop previous phase spinner/timer if running
   if declare -F _phase_timer_stop >/dev/null 2>&1; then
     _phase_timer_stop
   fi
   echo ""
   echo -e "  ${C_BLUE}${SYM_PHASE}${C_RESET} ${C_BOLD}${label}${C_RESET}"
-  # Start elapsed timer for this phase
+  # Set label and start wall-clock timer
   if declare -F _phase_timer_start >/dev/null 2>&1; then
-    _phase_timer_start "$label"
+    _PHASE_LABEL="$label"
+    _phase_timer_start
+    _stream_spinner_start "$label"
   fi
 }
 

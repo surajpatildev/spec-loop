@@ -89,6 +89,7 @@ TEST_COMMAND="$test_cmd"
 # Loop limits
 # MAX_LOOPS=25
 # MAX_REVIEW_FIX_LOOPS=3
+# MAX_TASKS_PER_RUN=0
 
 # Safety
 # CB_NO_PROGRESS_THRESHOLD=3
@@ -171,7 +172,7 @@ AGENTS
   step_ok "${C_BOLD}spec-loop initialized${C_RESET}"
   echo ""
   step_info "Next: edit AGENTS.md with your project's rules"
-  step_info "Then:  run ${C_BOLD}/spec${C_RESET} to create your first feature spec"
+  step_info "Then:  run ${C_BOLD}/spec-loop-spec${C_RESET} to create your first feature spec"
 }
 
 _update_gitignore() {
