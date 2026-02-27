@@ -5,7 +5,7 @@ Spec-driven autonomous development loop powered by Claude Code.
 Write a spec, then let `spec-loop` build it — task by task, with automated code review and fix cycles.
 
 ```
-spec-loop v0.1.0
+spec-loop v0.2.0
 
 ╭─ Spec ──────────────────────────────────────────╮
 │                                                  │
