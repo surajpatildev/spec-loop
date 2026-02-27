@@ -1,0 +1,31 @@
+{
+  "name": "@specloop/cli",
+  "version": "0.1.0",
+  "description": "Spec-driven autonomous development loop for AI coding agents",
+  "bin": {
+    "spec-loop": "./bin/spec-loop"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "spec",
+    "development",
+    "automation",
+    "cli"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/specloop/spec-loop"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    ".agents/",
+    "install.sh",
+    "LICENSE",
+    "README.md"
+  ]
+}
