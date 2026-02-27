@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use regex::Regex;
 use std::env;
@@ -40,18 +39,6 @@ pub fn slugify(s: &str) -> String {
     } else {
         out
     }
-}
-
-pub fn project_root() -> Result<PathBuf> {
-    let out = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("failed to run git")?;
-    if !out.status.success() {
-        return Err(anyhow!("not inside a git repository"));
-    }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    Ok(PathBuf::from(s))
 }
 
 pub fn current_branch() -> String {

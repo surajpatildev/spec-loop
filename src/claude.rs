@@ -240,6 +240,11 @@ fn parse_stream(lines: &[String]) -> ClaudeResult {
                 }
             }
             if v.get("type").and_then(Value::as_str) == Some("result") {
+                if session_id.is_empty() {
+                    if let Some(s) = v.get("session_id").and_then(Value::as_str) {
+                        session_id = s.to_string();
+                    }
+                }
                 if let Some(s) = v.get("result").and_then(Value::as_str) {
                     output_text = s.to_string();
                 }

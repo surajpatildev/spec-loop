@@ -180,7 +180,7 @@ When a run ends via `--once` or `--max-tasks`, the next invocation for the same 
 
 - [Claude Code](https://claude.ai/claude-code) CLI
 - Rust toolchain (`cargo`) for local build/install
-- `git` for version control
+- `git` recommended (optional)
 
 ## License
 

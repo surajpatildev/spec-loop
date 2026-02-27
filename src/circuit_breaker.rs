@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::ui::Ui;
-use crate::util::{head_sha, now_iso};
+use crate::util::now_iso;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -20,7 +20,6 @@ pub enum CircuitState {
 struct CircuitStateFile {
     state: CircuitState,
     failures: u32,
-    last_commit: String,
     opened_at: String,
 }
 
@@ -28,7 +27,6 @@ pub struct CircuitBreaker {
     path: PathBuf,
     state: CircuitState,
     failures: u32,
-    last_commit: String,
     opened_at: String,
 }
 
@@ -42,7 +40,6 @@ impl CircuitBreaker {
             path,
             state: CircuitState::Closed,
             failures: 0,
-            last_commit: String::new(),
             opened_at: String::new(),
         };
 
@@ -52,20 +49,11 @@ impl CircuitBreaker {
             if let Ok(data) = serde_json::from_str::<CircuitStateFile>(&text) {
                 cb.state = data.state;
                 cb.failures = data.failures;
-                cb.last_commit = data.last_commit;
                 cb.opened_at = data.opened_at;
             }
         }
 
-        if cb.last_commit.is_empty() {
-            cb.last_commit = head_sha();
-        }
-
         Ok(cb)
-    }
-
-    pub fn last_commit(&self) -> &str {
-        &self.last_commit
     }
 
     pub fn check(&mut self, cooldown_minutes: u32, ui: &Ui) -> Result<bool> {
@@ -113,7 +101,6 @@ impl CircuitBreaker {
         if made_progress {
             self.failures = 0;
             self.state = CircuitState::Closed;
-            self.last_commit = head_sha();
         } else {
             self.failures = self.failures.saturating_add(1);
             if self.failures >= threshold {
@@ -132,7 +119,6 @@ impl CircuitBreaker {
         let data = CircuitStateFile {
             state: self.state.clone(),
             failures: self.failures,
-            last_commit: self.last_commit.clone(),
             opened_at: self.opened_at.clone(),
         };
         let text = serde_json::to_string_pretty(&data)?;

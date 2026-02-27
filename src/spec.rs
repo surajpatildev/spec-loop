@@ -165,6 +165,21 @@ pub fn count_active(spec_dir: &Path) -> usize {
         .count()
 }
 
+pub fn status_signature(spec_dir: &Path) -> String {
+    let mut signature = String::new();
+    for file in list_task_files(spec_dir) {
+        let name = file
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        signature.push_str(&name);
+        signature.push(':');
+        signature.push_str(get_task_status(&file).as_str());
+        signature.push(';');
+    }
+    signature
+}
+
 pub fn find_next_task(spec_dir: &Path) -> Option<PathBuf> {
     for f in list_task_files(spec_dir) {
         if get_task_status(&f) == TaskStatus::Pending {

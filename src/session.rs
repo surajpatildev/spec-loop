@@ -22,6 +22,18 @@ pub struct SessionIteration {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionInvocation {
+    pub started_at: String,
+    pub mode: String,
+    pub once: bool,
+    pub max_tasks: u32,
+    pub max_loops: u32,
+    pub skip_review: bool,
+    #[serde(default)]
+    pub claude_session_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionJson {
     pub session_id: String,
     pub version: String,
@@ -31,6 +43,10 @@ pub struct SessionJson {
     pub max_loops: u32,
     pub max_review_fix_loops: u32,
     pub max_tasks_per_run: u32,
+    #[serde(default)]
+    pub claude_sessions: Vec<String>,
+    #[serde(default)]
+    pub invocations: Vec<SessionInvocation>,
     #[serde(default)]
     pub iterations: Vec<SessionIteration>,
     #[serde(default)]
@@ -145,6 +161,8 @@ pub fn ensure_session_initialized(
             max_loops: cfg.max_loops,
             max_review_fix_loops: cfg.max_review_fix_loops,
             max_tasks_per_run: cfg.max_tasks_per_run,
+            claude_sessions: vec![],
+            invocations: vec![],
             iterations: vec![],
             ended_at: None,
             duration_seconds: None,
@@ -184,8 +202,9 @@ pub fn append_run_invocation_header(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown-session".to_string());
 
+    let started_at = now_iso();
     let content = format!(
-        "\n## Invocation — {}\n- Session ID: {}\n- Mode: {}\n- Flags: once={}, max_tasks={}, max_loops={}, skip_review={}\n\n",
+        "\n## Invocation — {}\n- Spec-loop Session ID: {}\n- Mode: {}\n- Flags: once={}, max_tasks={}, max_loops={}, skip_review={}\n- Claude Sessions: recorded per phase below and in session.json invocations[].claude_session_ids\n\n",
         now_human(),
         session_id,
         mode,
@@ -194,8 +213,24 @@ pub fn append_run_invocation_header(
         max_loops,
         skip_review,
     );
+    append_text(&run_path, &content)?;
 
-    append_text(&run_path, &content)
+    let json_path = session_json_path(session_path);
+    if json_path.exists() {
+        let mut data = read_session_json(&json_path)?;
+        data.invocations.push(SessionInvocation {
+            started_at,
+            mode: mode.to_string(),
+            once,
+            max_tasks,
+            max_loops,
+            skip_review,
+            claude_session_ids: vec![],
+        });
+        write_session_json(&json_path, &data)?;
+    }
+
+    Ok(())
 }
 
 pub fn append_run_iteration_header(
@@ -210,6 +245,32 @@ pub fn append_run_iteration_header(
     }
     content.push('\n');
     append_text(&run_path, &content)
+}
+
+pub fn register_claude_session(session_path: &Path, claude_session_id: &str) -> Result<()> {
+    let id = claude_session_id.trim();
+    if id.is_empty() {
+        return Ok(());
+    }
+
+    let json_path = session_json_path(session_path);
+    if !json_path.exists() {
+        return Ok(());
+    }
+
+    let mut data = read_session_json(&json_path)?;
+
+    if !data.claude_sessions.iter().any(|v| v == id) {
+        data.claude_sessions.push(id.to_string());
+    }
+
+    if let Some(inv) = data.invocations.last_mut() {
+        if !inv.claude_session_ids.iter().any(|v| v == id) {
+            inv.claude_session_ids.push(id.to_string());
+        }
+    }
+
+    write_session_json(&json_path, &data)
 }
 
 pub fn append_run_phase(

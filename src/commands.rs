@@ -20,17 +20,18 @@ use crate::prompts::{build_prompt, fix_prompt, review_prompt};
 use crate::session::{
     append_iteration_log, append_run_invocation_header, append_run_iteration_header,
     append_run_phase, clear_resume_state, ensure_session_initialized, finalize_session,
-    load_resume_state, save_resume_state, session_continuation_for_spec, session_iterations_count,
-    session_started_epoch, session_total_cost, session_total_iterations, IterationLogInput,
+    load_resume_state, register_claude_session, save_resume_state, session_continuation_for_spec,
+    session_iterations_count, session_started_epoch, session_total_cost, session_total_iterations,
+    IterationLogInput,
 };
 use crate::spec::{
     count_active, count_remaining, count_status, count_total, find_next_task, find_open_task,
-    get_spec_name, get_task_name, list_spec_dirs, resolve_spec_dir, set_task_status, TaskStatus,
+    get_spec_name, get_task_name, list_spec_dirs, resolve_spec_dir, set_task_status,
+    status_signature, TaskStatus,
 };
 use crate::ui::Ui;
 use crate::util::{
-    command_exists, current_branch, format_cost, format_duration, head_sha, now_stamp,
-    project_root, slugify,
+    command_exists, current_branch, format_cost, format_duration, head_sha, now_stamp, slugify,
 };
 
 pub fn cmd_init(args: &InitArgs, ui: &Ui) -> Result<i32> {
@@ -398,6 +399,8 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
         )?;
 
         let iteration_start = Instant::now();
+        let remaining_before = count_remaining(&spec_dir);
+        let signature_before = status_signature(&spec_dir);
 
         let before_sha: String;
         let after_build_sha: String;
@@ -432,6 +435,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             ui.phase("build");
             let prompt = build_prompt(&spec_dir, &cfg);
             let result = run_claude(&prompt, &cfg, args.dry_run, args.verbose)?;
+            register_claude_session(&session_path, &result.claude_session_id)?;
             let build_status = parse_kv(&result.output_text, "BUILD_STATUS").unwrap_or_default();
 
             build_cost = result.cost_usd;
@@ -620,9 +624,6 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
         resume_phase.clear();
         resume_before_sha.clear();
 
-        let current_head = head_sha();
-        let mut made_progress = cb.last_commit().is_empty() || current_head != cb.last_commit();
-
         if args.skip_review {
             if let Some(task_file) = &next_task_file {
                 let _ = set_task_status(task_file, TaskStatus::InReview);
@@ -630,7 +631,11 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
 
             let remaining = count_remaining(&spec_dir);
             ui.task_complete("Task ready for review", remaining);
-            cb.record(made_progress, cfg.cb_no_progress_threshold, ui)?;
+            cb.record(
+                has_spec_progress(&spec_dir, remaining_before, &signature_before),
+                cfg.cb_no_progress_threshold,
+                ui,
+            )?;
 
             append_iteration_log(
                 &session_path,
@@ -662,6 +667,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             },
         );
         let review_result = run_claude(&review_prompt_text, &cfg, args.dry_run, args.verbose)?;
+        register_claude_session(&session_path, &review_result.claude_session_id)?;
         review_cost = review_result.cost_usd;
         total_cost += review_cost;
 
@@ -722,7 +728,11 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
 
             let remaining = count_remaining(&spec_dir);
             ui.task_complete("Task done", remaining);
-            cb.record(made_progress, cfg.cb_no_progress_threshold, ui)?;
+            cb.record(
+                has_spec_progress(&spec_dir, remaining_before, &signature_before),
+                cfg.cb_no_progress_threshold,
+                ui,
+            )?;
 
             append_iteration_log(
                 &session_path,
@@ -768,6 +778,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             ));
             let fix_prompt_text = fix_prompt(&spec_dir, &cfg, &review_findings);
             let fix_result = run_claude(&fix_prompt_text, &cfg, args.dry_run, args.verbose)?;
+            register_claude_session(&session_path, &fix_result.claude_session_id)?;
             total_cost += fix_result.cost_usd;
             fix_total_cost += fix_result.cost_usd;
 
@@ -807,6 +818,7 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             );
             let recheck_result =
                 run_claude(&recheck_prompt_text, &cfg, args.dry_run, args.verbose)?;
+            register_claude_session(&session_path, &recheck_result.claude_session_id)?;
             total_cost += recheck_result.cost_usd;
             fix_total_cost += recheck_result.cost_usd;
 
@@ -880,12 +892,13 @@ pub fn cmd_run(args: &RunArgs, ui: &Ui) -> Result<i32> {
             let _ = set_task_status(task_file, TaskStatus::Done);
         }
 
-        let current_head = head_sha();
-        made_progress = cb.last_commit().is_empty() || current_head != cb.last_commit();
-
         let remaining = count_remaining(&spec_dir);
         ui.task_complete("Task done", remaining);
-        cb.record(made_progress, cfg.cb_no_progress_threshold, ui)?;
+        cb.record(
+            has_spec_progress(&spec_dir, remaining_before, &signature_before),
+            cfg.cb_no_progress_threshold,
+            ui,
+        )?;
 
         let after_fix_sha = head_sha();
         append_iteration_log(
@@ -942,8 +955,6 @@ fn preflight(cfg: &Config) -> Result<()> {
     if !command_exists(&cfg.claude_bin) {
         bail!("Required command not found: {}", cfg.claude_bin);
     }
-
-    let _ = project_root().context("Not inside a git repository. Run 'git init' first.")?;
 
     if !Path::new(&cfg.speclooprc).exists() {
         bail!("No .speclooprc found. Run 'spec-loop init' first.");
@@ -1117,4 +1128,12 @@ fn recent_commits() -> Option<Vec<String>> {
     } else {
         Some(lines)
     }
+}
+
+fn has_spec_progress(spec_dir: &Path, remaining_before: usize, signature_before: &str) -> bool {
+    let remaining_after = count_remaining(spec_dir);
+    if remaining_after < remaining_before {
+        return true;
+    }
+    status_signature(spec_dir) != signature_before
 }
