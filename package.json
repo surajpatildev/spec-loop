@@ -18,7 +18,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/specloop/spec-loop"
+    "url": "https://github.com/surajpatildev/spec-loop"
   },
   "files": [
     "bin/",

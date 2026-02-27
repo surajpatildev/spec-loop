@@ -2,7 +2,7 @@
 # spec-loop installer — builds Rust binary and installs to ~/.local/bin
 set -euo pipefail
 
-REPO="specloop/spec-loop"
+REPO="surajpatildev/spec-loop"
 INSTALL_DIR="${SPEC_LOOP_INSTALL_DIR:-$HOME/.local}"
 BIN_DIR="$INSTALL_DIR/bin"
 

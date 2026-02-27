@@ -52,7 +52,7 @@ Installs namespaced skills to `~/.agents/skills/` with symlinks to `~/.claude/sk
 ### CLI (the automation loop)
 
 ```bash
-curl -sSf https://raw.githubusercontent.com/specloop/spec-loop/main/install.sh | bash
+curl -sSf https://raw.githubusercontent.com/surajpatildev/spec-loop/main/install.sh | bash
 ```
 
 Or via npm:
