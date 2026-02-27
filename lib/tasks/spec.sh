@@ -27,6 +27,19 @@ count_pending_tasks() {
   awk '/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*pending[[:space:]]*$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
 }
 
+count_in_review_tasks() {
+  local spec_dir="$1"
+  [[ -d "$spec_dir/tasks" ]] || { echo "0"; return; }
+
+  local -a task_files=()
+  shopt -s nullglob
+  task_files=("$spec_dir"/tasks/*.md)
+  shopt -u nullglob
+  [[ ${#task_files[@]} -gt 0 ]] || { echo "0"; return; }
+
+  awk '/^[[:space:]]*>?[[:space:]]*Status:[[:space:]]*in-review[[:space:]]*$/ { count += 1 } END { print count + 0 }' "${task_files[@]}"
+}
+
 count_remaining_tasks() {
   local spec_dir="$1"
   [[ -d "$spec_dir/tasks" ]] || { echo "0"; return; }

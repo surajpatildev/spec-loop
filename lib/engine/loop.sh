@@ -60,9 +60,11 @@ cmd_run() {
     fi
   fi
 
-  local total_tasks done_tasks remaining_tasks
+  local total_tasks done_tasks pending_tasks in_review_tasks remaining_tasks
   total_tasks="$(count_total_tasks "$spec_dir")"
   done_tasks="$(count_done_tasks "$spec_dir")"
+  pending_tasks="$(count_pending_tasks "$spec_dir")"
+  in_review_tasks="$(count_in_review_tasks "$spec_dir")"
   remaining_tasks="$(count_remaining_tasks "$spec_dir")"
 
   print_header
@@ -74,6 +76,7 @@ cmd_run() {
   box_empty
   box_line "  ${spec_name}"
   box_line "  $(progress_bar "$done_tasks" "$total_tasks" 16 "done") ${SYM_DIAMOND} ${remaining_tasks} remaining"
+  box_line "  ${pending_tasks} pending ${SYM_DIAMOND} ${in_review_tasks} in-review"
   box_line "  ${C_DIM}${branch}${C_RESET}"
   if [[ "$MAX_TASKS_PER_RUN" -gt 0 ]]; then
     box_line "  Task budget  ${MAX_TASKS_PER_RUN} this run"

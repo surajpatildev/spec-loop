@@ -27,10 +27,12 @@ cmd_status() {
   fi
 
   for spec_dir in "${all_specs[@]}"; do
-    local name total done_count remaining active_count
+    local name total done_count pending_count in_review_count remaining active_count
     name=$(basename "$spec_dir")
     total=$(count_total_tasks "$spec_dir")
     done_count=$(count_done_tasks "$spec_dir")
+    pending_count=$(count_pending_tasks "$spec_dir")
+    in_review_count=$(count_in_review_tasks "$spec_dir")
     remaining=$(count_remaining_tasks "$spec_dir")
     active_count=$(count_active_tasks "$spec_dir")
 
@@ -40,6 +42,7 @@ cmd_status() {
       box_header "$name" 52
       box_empty
       box_line "  $(progress_bar "$done_count" "$total" 16 "done") ${SYM_DIAMOND} ${remaining} remaining"
+      box_line "  ${pending_count} pending ${SYM_DIAMOND} ${in_review_count} in-review"
 
       # Show current branch
       local branch
